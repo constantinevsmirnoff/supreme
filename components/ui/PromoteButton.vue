@@ -1,0 +1,91 @@
+<script setup lang="ts">
+/**
+ * Promote Button — Figma: Promote Button (node 6:1623)
+ * States: Default, Hover, Focus, Disabled
+ * Auto Layout: padding 6px (H) 2px (V), border-radius 5px, size 36×36px
+ */
+import { ref, computed } from 'vue'
+
+const props = defineProps<{
+  disabled?: boolean
+}>()
+
+const isHover = ref(false)
+const isFocus = ref(false)
+
+const stateClass = computed(() => {
+  if (props.disabled) return 'promote--disabled'
+  if (isFocus.value) return 'promote--focus'
+  if (isHover.value) return 'promote--hover'
+  return 'promote--default'
+})
+</script>
+
+<template>
+  <button
+    type="button"
+    class="promote"
+    :class="stateClass"
+    :disabled="disabled"
+    aria-label="Promote"
+    @mouseenter="isHover = true"
+    @mouseleave="isHover = false"
+    @focus="isFocus = true"
+    @blur="isFocus = false"
+  >
+    <span class="promote__icon" aria-hidden="true">
+      <svg width="16" height="15" viewBox="0 0 16 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M0 7.4693V6.45331C0 5.50505 0.260105 4.77867 0.780316 4.27418C1.30521 3.76969 2.0621 3.51744 3.05097 3.51744H5.51142C6.07381 3.45671 6.66432 3.35862 7.28295 3.22315C7.90158 3.08301 8.52724 2.90551 9.15993 2.69063C9.79731 2.47575 10.4206 2.23051 11.0299 1.95491C11.6391 1.67931 12.2109 1.37101 12.7452 1.03001V2.48743C12.2015 2.81909 11.6368 3.11571 11.051 3.3773C10.4651 3.63422 9.86292 3.86077 9.24429 4.05697C8.62566 4.24849 7.99063 4.40965 7.33919 4.54044C6.69244 4.67123 6.03632 4.76933 5.37083 4.83473H3.05097C2.42765 4.83473 1.98243 4.96085 1.71529 5.2131C1.45284 5.46067 1.32162 5.87408 1.32162 6.45331V7.4693C1.32162 8.04854 1.45284 8.46194 1.71529 8.70952C1.98243 8.95709 2.42765 9.08088 3.05097 9.08088H5.43409C6.09022 9.15095 6.73697 9.25138 7.37434 9.38217C8.01172 9.5083 8.63503 9.66945 9.24429 9.86565C9.85823 10.0572 10.4558 10.2837 11.0369 10.5453C11.6227 10.8022 12.1922 11.0942 12.7452 11.4212V12.8856C12.1734 12.5399 11.5876 12.2293 10.9877 11.9537C10.3925 11.6781 9.78559 11.4375 9.16696 11.232C8.55302 11.0264 7.93673 10.8559 7.3181 10.7205C6.69947 10.5803 6.08319 10.4729 5.46924 10.3982H3.05097C2.0621 10.3982 1.30521 10.1459 0.780316 9.64143C0.260105 9.13693 0 8.41289 0 7.4693ZM6.73462 10.1599L7.28998 13.0257C7.3884 13.5022 7.33919 13.9039 7.14235 14.2309C6.94552 14.5579 6.66667 14.7821 6.3058 14.9036C6.0621 14.983 5.79262 15.0133 5.49736 14.9947C5.20211 14.976 4.91154 14.8685 4.62566 14.6723C4.34446 14.4762 4.1031 14.1562 3.90158 13.7124L2.2355 10.0268H3.58524L5.18102 13.4111C5.25132 13.5559 5.34505 13.647 5.46221 13.6844C5.57938 13.7264 5.68951 13.7288 5.79262 13.6914C5.88635 13.654 5.96134 13.5933 6.01757 13.5092C6.0785 13.4251 6.09725 13.3154 6.07381 13.1799L5.46924 10.1599H6.73462ZM4.42179 4.06397H5.75044V9.85163H4.42179V4.06397ZM12.2671 12.0097V1.85682C12.2671 1.49246 12.3468 1.17248 12.5062 0.896877C12.6655 0.616603 12.8858 0.397055 13.167 0.238233C13.4482 0.079411 13.7692 0 14.1301 0C14.5003 0 14.8237 0.079411 15.1002 0.238233C15.3814 0.397055 15.6016 0.616603 15.761 0.896877C15.9203 1.17248 16 1.49246 16 1.85682V12.0097C16 12.3741 15.9203 12.6964 15.761 12.9767C15.6016 13.257 15.3814 13.4765 15.1002 13.6353C14.8237 13.7942 14.5003 13.8736 14.1301 13.8736C13.7692 13.8736 13.4482 13.7942 13.167 13.6353C12.8858 13.4765 12.6655 13.257 12.5062 12.9767C12.3468 12.6964 12.2671 12.3741 12.2671 12.0097ZM13.5958 12.0097C13.5958 12.1732 13.6426 12.304 13.7364 12.4021C13.8348 12.5002 13.966 12.5493 14.1301 12.5493C14.2941 12.5493 14.4253 12.5002 14.5237 12.4021C14.6268 12.304 14.6784 12.1732 14.6784 12.0097V1.85682C14.6784 1.69332 14.6268 1.56253 14.5237 1.46443C14.4253 1.36634 14.2941 1.31729 14.1301 1.31729C13.966 1.31729 13.8348 1.36634 13.7364 1.46443C13.6426 1.56253 13.5958 1.69332 13.5958 1.85682V12.0097Z" fill="currentColor"/>
+      </svg>
+    </span>
+  </button>
+</template>
+
+<style scoped>
+.promote {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 2px 6px;
+  border: 1px solid;
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+}
+
+.promote:focus {
+  outline: none;
+}
+
+.promote--default {
+  border-color: var(--color-border-strong);
+}
+
+.promote--hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.promote--focus {
+  border-color: var(--color-focus-ring);
+  box-shadow: 0 0 0 1px var(--color-focus-ring);
+}
+
+.promote--disabled {
+  border-color: var(--color-border-strong);
+  color: var(--color-text-tertiary);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.promote__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  flex-shrink: 0;
+}
+</style>

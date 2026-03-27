@@ -1,0 +1,372 @@
+/**
+ * Design Tokens — extracted from Figma UI Kit
+ * Semantic naming for colors and typography
+ */
+
+/* ========== App shell (full viewport, no UA page inset) ========== */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* ========== Avenir (local from public/fonts/Avenir/) ========== */
+
+@font-face {
+  font-family: "Avenir Next";
+  src: url("/fonts/Avenir/Thin/Thin.woff2") format("woff2"), url("/fonts/Avenir/Thin/Thin.woff") format("woff");
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Avenir Next";
+  src: url("/fonts/Avenir/Thin%20Italic/Thin%20Italic.woff2") format("woff2"), url("/fonts/Avenir/Thin%20Italic/Thin%20Italic.woff") format("woff");
+  font-weight: 100;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Avenir Next";
+  src: url("/fonts/Avenir/Ultra%20Light/Ultra%20Light.woff2") format("woff2"), url("/fonts/Avenir/Ultra%20Light/Ultra%20Light.woff") format("woff");
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Avenir Next";
+  src: url("/fonts/Avenir/Ultra%20LIght%20Italic/Ultra%20LIght%20Italic.woff2") format("woff2"), url("/fonts/Avenir/Ultra%20LIght%20Italic/Ultra%20LIght%20Italic.woff") format("woff");
+  font-weight: 200;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Avenir Next";
+  src: url("/fonts/Avenir/Light/Light.woff2") format("woff2"), url("/fonts/Avenir/Light/Light.woff") format("woff");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Avenir Next";
+  src: url("/fonts/Avenir/Light%20Italic/Light%20Italic.woff2") format("woff2"), url("/fonts/Avenir/Light%20Italic/Light%20Italic.woff") format("woff");
+  font-weight: 300;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Avenir Next";
+  src: url("/fonts/Avenir/Regular/Regular.woff2") format("woff2"), url("/fonts/Avenir/Regular/Regular.woff") format("woff");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Avenir Next";
+  src: url("/fonts/Avenir/Regular%20Italic/Regular%20Italic.woff2") format("woff2"), url("/fonts/Avenir/Regular%20Italic/Regular%20Italic.woff") format("woff");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Avenir Next";
+  src: url("/fonts/Avenir/Medium/Medium.woff2") format("woff2"), url("/fonts/Avenir/Medium/Medium.woff") format("woff");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Avenir Next";
+  src: url("/fonts/Avenir/Medium%20Italic/Medium%20Italic.woff2") format("woff2"), url("/fonts/Avenir/Medium%20Italic/Medium%20Italic.woff") format("woff");
+  font-weight: 500;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Avenir Next";
+  src: url("/fonts/Avenir/Demi-Bold/Demi-Bold.woff2") format("woff2"), url("/fonts/Avenir/Demi-Bold/Demi-Bold.woff") format("woff");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Avenir Next";
+  src: url("/fonts/Avenir/Demi-Bold%20Italic/Demi-Bold%20Italic.woff2") format("woff2"), url("/fonts/Avenir/Demi-Bold%20Italic/Demi-Bold%20Italic.woff") format("woff");
+  font-weight: 600;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Avenir Next";
+  src: url("/fonts/Avenir/Bold/Bold.woff2") format("woff2"), url("/fonts/Avenir/Bold/Bold.woff") format("woff");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Avenir Next";
+  src: url("/fonts/Avenir/Bold%20Italic/Bold%20Italic.woff2") format("woff2"), url("/fonts/Avenir/Bold%20Italic/Bold%20Italic.woff") format("woff");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Avenir Next";
+  src: url("/fonts/Avenir/Heavy/Heavy.woff2") format("woff2"), url("/fonts/Avenir/Heavy/Heavy.woff") format("woff");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Avenir Next";
+  src: url("/fonts/Avenir/Heavy%20Italic/Heavy%20Italic.woff2") format("woff2"), url("/fonts/Avenir/Heavy%20Italic/Heavy%20Italic.woff") format("woff");
+  font-weight: 800;
+  font-style: italic;
+  font-display: swap;
+}
+
+:root {
+  /* ========== Color Variables ========== */
+  
+  /* Text */
+  --color-text-primary: #111111;
+  --color-text-secondary: #474747;
+  --color-text-tertiary: #757575;
+
+  /* Backgrounds */
+  --color-background-primary: #fefefe;
+  --color-background-secondary: #fafafa;
+  --color-background-tertiary: #ededef;
+  --color-background-accent: #dadfea;
+
+  /* Primary / Accent */
+  --color-primary: #347dff;
+  --color-primary-dark: #1c4999;
+  --color-primary-muted: #edf3fe;
+
+  /* Borders */
+  --color-border-strong: rgba(0, 0, 0, 0.08);
+  --color-border-light: rgba(0, 0, 0, 0.02);
+  --color-focus-ring: rgba(52, 125, 255, 0.15);
+
+  /* Semantic (feedback) */
+  --color-success: #16a34a;
+  --color-alert: #f59e0b;
+  --color-alert-muted: #fff2dc;
+  --color-critical: #ff453a;
+  --color-critical-light: #fbedeb;
+  --color-white: #ffffff;
+}
+
+/* ========== Typography ========== */
+
+:root {
+  /* Font family */
+  --font-family-base: "Avenir Next", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  /* Title 1 — 22px */
+  --typography-title-1-font-size: 22px;
+  --typography-title-1-font-weight-strong: 600;
+  --typography-title-1-font-weight-light: 400;
+  --typography-title-1-line-height: 26px;
+  --typography-title-1-letter-spacing: -0.025em;
+
+  /* Title 2 — 17px */
+  --typography-title-2-font-size: 17px;
+  --typography-title-2-font-weight-strong: 600;
+  --typography-title-2-font-weight-light: 500;
+  --typography-title-2-line-height: 22px;
+  --typography-title-2-letter-spacing: 0;
+
+  /* Title 3 — 15px */
+  --typography-title-3-font-size: 15px;
+  --typography-title-3-font-weight-strong: 600;
+  --typography-title-3-font-weight-light: 500;
+  --typography-title-3-line-height: 20px;
+  --typography-title-3-letter-spacing: 0.005em;
+
+  /* Body — 12px */
+  --typography-body-font-size: 12px;
+  --typography-body-font-weight-strong: 600;
+  --typography-body-font-weight-light: 500;
+  --typography-body-line-height: 16px;
+  --typography-body-letter-spacing: 0.005em;
+
+  /* Body XL — 13px */
+  --typography-body-xl-font-size: 13px;
+  --typography-body-xl-font-weight-strong: 600;
+  --typography-body-xl-font-weight-light: 500;
+  --typography-body-xl-line-height-strong: 16px;
+  --typography-body-xl-line-height-light: 20px;
+  --typography-body-xl-letter-spacing-strong: -0.01em;
+  --typography-body-xl-letter-spacing-light: -0.015em;
+
+  /* Surfaces & elevation */
+  --color-overlay-scrim: rgba(0, 0, 0, 0.35);
+  --color-surface-frosted: rgba(255, 255, 255, 0.8);
+  --shadow-elevation: 0 7px 22px 0 rgba(0, 0, 0, 0.25);
+  --shadow-card-hover: 0 2px 8px 4px rgba(0, 0, 0, 0.05);
+
+  --border-width-hairline: 1px;
+
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 5px;
+  --radius-lg: 6px;
+  --radius-xl: 25px;
+
+  --space-3xs: 3px;
+  --space-2xs: 4px;
+  --space-xs: 5px;
+  --space-sm: 6px;
+  --space-md: 8px;
+  --space-lg: 10px;
+  --space-xl: 12px;
+  --space-2xl: 15px;
+  --space-3xl: 16px;
+  --space-4xl: 20px;
+  --space-5xl: 24px;
+  --space-6xl: 25px;
+  --space-7xl: 26px;
+  --space-8xl: 28px;
+  --space-9xl: 30px;
+  --space-10xl: 32px;
+  --space-11xl: 48px;
+  --space-12xl: 80px;
+  --space-13xl: 104px;
+  --space-14xl: 160px;
+
+  --size-icon-sm: 7px;
+  --size-icon-md: 14px;
+  --size-control-height-sm: 26px;
+  --size-control-height-md: 28px;
+  --size-control-height-lg: 30px;
+
+  --dropdown-panel-width: 250px;
+  --dropdown-panel-max-height: 320px;
+  --dropdown-panel-min-width: 160px;
+  --layout-edge-inset: 8px;
+  --layout-page-max-width: 1200px;
+  --layout-header-inner-max-width: 1240px;
+  --layout-search-max-width: 816px;
+  --layout-modal-max-width: min(726px, calc(100vw - 48px));
+  --layout-modal-max-height: 700px;
+  --layout-modal-padding: 25px;
+  --layout-modal-radius: 25px;
+  --layout-modal-shadow-y: 7px;
+  --layout-modal-shadow-blur: 22px;
+  --blur-backdrop-sm: 4px;
+
+  --line-height-ui-md: 20px;
+}
+
+/* Typography utility classes (optional) */
+.typography-title-1-strong {
+  font-family: var(--font-family-base);
+  font-size: var(--typography-title-1-font-size);
+  font-weight: var(--typography-title-1-font-weight-strong);
+  line-height: var(--typography-title-1-line-height);
+  letter-spacing: var(--typography-title-1-letter-spacing);
+}
+
+.typography-title-1-light {
+  font-family: var(--font-family-base);
+  font-size: var(--typography-title-1-font-size);
+  font-weight: var(--typography-title-1-font-weight-light);
+  line-height: var(--typography-title-1-line-height);
+  letter-spacing: var(--typography-title-1-letter-spacing);
+}
+
+.typography-title-2-strong {
+  font-family: var(--font-family-base);
+  font-size: var(--typography-title-2-font-size);
+  font-weight: var(--typography-title-2-font-weight-strong);
+  line-height: var(--typography-title-2-line-height);
+  letter-spacing: var(--typography-title-2-letter-spacing);
+}
+
+.typography-title-2-light {
+  font-family: var(--font-family-base);
+  font-size: var(--typography-title-2-font-size);
+  font-weight: var(--typography-title-2-font-weight-light);
+  line-height: var(--typography-title-2-line-height);
+  letter-spacing: var(--typography-title-2-letter-spacing);
+}
+
+.typography-title-3-strong {
+  font-family: var(--font-family-base);
+  font-size: var(--typography-title-3-font-size);
+  font-weight: var(--typography-title-3-font-weight-strong);
+  line-height: var(--typography-title-3-line-height);
+  letter-spacing: var(--typography-title-3-letter-spacing);
+}
+
+.typography-title-3-light {
+  font-family: var(--font-family-base);
+  font-size: var(--typography-title-3-font-size);
+  font-weight: var(--typography-title-3-font-weight-light);
+  line-height: var(--typography-title-3-line-height);
+  letter-spacing: var(--typography-title-3-letter-spacing);
+}
+
+.typography-body-strong {
+  font-family: var(--font-family-base);
+  font-size: var(--typography-body-font-size);
+  font-weight: var(--typography-body-font-weight-strong);
+  line-height: var(--typography-body-line-height);
+  letter-spacing: var(--typography-body-letter-spacing);
+}
+
+.typography-body-light {
+  font-family: var(--font-family-base);
+  font-size: var(--typography-body-font-size);
+  font-weight: var(--typography-body-font-weight-light);
+  line-height: var(--typography-body-line-height);
+  letter-spacing: var(--typography-body-letter-spacing);
+}
+
+.typography-body-large-strong {
+  font-family: var(--font-family-base);
+  font-size: var(--typography-body-large-font-size);
+  font-weight: var(--typography-body-largel-font-weight-strong);
+  line-height: var(--typography-body-large-line-height-strong);
+  letter-spacing: var(--typography-body-large-letter-spacing-strong);
+}
+
+.typography-body-large-light {
+  font-family: var(--font-family-base);
+  font-size: var(--typography-body-large-font-size);
+  font-weight: var(--typography-body-large-font-weight-light);
+  line-height: var(--typography-body-large-line-height-light);
+  letter-spacing: var(--typography-body-large-letter-spacing-light);
+}

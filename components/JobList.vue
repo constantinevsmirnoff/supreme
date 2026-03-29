@@ -4,17 +4,23 @@
  * Each job’s `location` from fetchJobs() is a single German city (see `src/api/mockJobData.js` LOCATIONS).
  * Each job’s `company` is one of three employers (see `COMPANIES` in the same file).
  */
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import JobListHeader from '@/components/JobListHeader.vue'
 import JobCard from '@/components/JobCard.vue'
 import {
   jobs,
+  jobsListView,
   templates,
   manualOverrideByJobId,
+  jobListSearchDebounced,
   loadJobsAndTemplates,
   setManualTemplateForJob,
-  clearManualOverrides
+  clearManualTemplateForJob,
+  clearManualOverrides,
+  TEMPLATE_DROPDOWN_AUTO_VALUE
 } from '@/src/state/jobsAndTemplatesStore.js'
+import { useConvexBackend } from '@/src/config/dataBackend.js'
+import { filterJobsBySearch } from '@/src/domain/listFilters.js'
 
 type Job = {
   id: string
@@ -31,14 +37,22 @@ type Job = {
 
 const searchQuery = ref('')
 
+let jobSearchDebounceTimer: ReturnType<typeof setTimeout> | undefined
+watch(searchQuery, (q) => {
+  clearTimeout(jobSearchDebounceTimer)
+  jobSearchDebounceTimer = setTimeout(() => {
+    jobListSearchDebounced.value = q
+  }, 280)
+})
+onBeforeUnmount(() => {
+  clearTimeout(jobSearchDebounceTimer)
+})
+
 const filteredJobs = computed(() => {
-  const q = searchQuery.value.trim().toLowerCase()
-  if (q === '') return jobs.value as Job[]
-  return (jobs.value as Job[]).filter((job) =>
-    [job.jobTitle, job.company, job.location, job.industry].some((f) =>
-      (f ?? '').toLowerCase().includes(q)
-    )
-  )
+  if (useConvexBackend()) {
+    return jobsListView.value as Job[]
+  }
+  return filterJobsBySearch(jobs.value as Job[], searchQuery.value)
 })
 
 const templateOptions = computed(() =>
@@ -48,6 +62,10 @@ const templateOptions = computed(() =>
 )
 
 function onSelectTemplate (jobId: string, title: string) {
+  if (title === TEMPLATE_DROPDOWN_AUTO_VALUE) {
+    clearManualTemplateForJob(jobId)
+    return
+  }
   setManualTemplateForJob(jobId, title)
 }
 
@@ -73,6 +91,7 @@ function isAssignmentLocked (jobId: string) {
 }
 
 onMounted(() => {
+  jobListSearchDebounced.value = searchQuery.value
   void loadJobsAndTemplates()
 })
 </script>

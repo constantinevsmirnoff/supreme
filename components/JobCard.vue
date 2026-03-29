@@ -8,6 +8,7 @@
  */
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import DropdownSelector from '@/components/ui/DropdownSelector.vue'
+import { TEMPLATE_DROPDOWN_AUTO_VALUE } from '@/src/state/jobsAndTemplatesStore.js'
 import Checkbox from '@/components/ui/Checkbox.vue'
 import Status from '@/components/ui/Status.vue'
 import LastUpdated from '@/components/ui/LastUpdated.vue'
@@ -60,9 +61,13 @@ function setSelected (value: boolean) {
   }
 }
 
-const templateMenuItems = computed(() =>
-  props.templateOptions.map((t) => ({ label: t }))
-)
+const templateMenuItems = computed(() => {
+  if (props.templateOptions.length === 0) return []
+  return [
+    { label: 'Auto', value: TEMPLATE_DROPDOWN_AUTO_VALUE },
+    ...props.templateOptions.map((t) => ({ label: t }))
+  ]
+})
 const isHover = ref(false)
 
 const showCheckbox = computed(() => isHover.value || isSelected.value)

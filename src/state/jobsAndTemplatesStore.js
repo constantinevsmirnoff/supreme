@@ -11,6 +11,8 @@ import {
   normalizeJobTemplates,
   syncLegacyFieldsFromArrays
 } from '@/src/domain/assignJobTemplates.js'
+import { useConvexBackend } from '@/src/config/dataBackend.js'
+import { getConvexClient, api } from '@/src/lib/convexClient.js'
 
 export const jobs = ref([])
 export const templates = ref([])
@@ -18,11 +20,36 @@ export const templateCounts = ref({})
 /** @type {import('vue').Ref<Record<string, string>>} */
 export const manualOverrideByJobId = ref({})
 
+/** Emitted by JobCard template dropdown “Auto”; JobList clears manual override for that job. */
+export const TEMPLATE_DROPDOWN_AUTO_VALUE = '__auto_assign__'
+
+/** Debounced job-list search (Convex query `jobFilters.search`). */
+export const jobListSearchDebounced = ref('')
+/** Debounced Page Manager template search (Convex query `templateFilters.search`). */
+export const pageManagerSearchDebounced = ref('')
+/** Convex: jobs after `jobFilters` (substring search). Mock: unused. */
+export const jobsListView = ref([])
+/** Convex: templates after `templateFilters` + default-first sort. Mock: unused. */
+export const templatesGridView = ref([])
+/** True after `seedIfEmpty` when using Convex. */
+export const convexBootstrapReady = ref(false)
+/** Bumped after Convex template/job writes so `ConvexWorkspaceSync` re-runs `listWithAssignments`. */
+export const convexPullNonce = ref(0)
+
 let loadPromise = null
 
 export function loadJobsAndTemplates () {
   if (!loadPromise) {
     loadPromise = (async () => {
+      if (useConvexBackend()) {
+        const client = getConvexClient()
+        if (client) {
+          await client.mutation(api.seed.seedIfEmpty, {})
+        }
+        convexBootstrapReady.value = true
+        return
+      }
+
       const [jobRows, tplsRaw] = await Promise.all([
         fetchJobs(),
         fetchJobTemplates()
@@ -68,14 +95,68 @@ export function setManualTemplateForJob (jobId, templateTitle) {
 }
 
 /**
+ * Remove manual template pick so the job uses conditional auto-assignment again.
+ * @param {string} jobId
+ */
+export function clearManualTemplateForJob (jobId) {
+  if (!(jobId in manualOverrideByJobId.value)) return
+  const next = { ...manualOverrideByJobId.value }
+  delete next[jobId]
+  manualOverrideByJobId.value = next
+  reassignJobs()
+}
+
+/**
  * Enable or disable automatic job assignment for a non-default template (Page Manager API).
  * Inactive templates do not receive auto-assigned jobs until `active` is true.
  * @param {string} templateId
  * @param {boolean} active
  */
+/**
+ * Persist template condition tags from Page Manager overlay; reassigns jobs (mock) or syncs via Convex pull.
+ * @param {string} templateId
+ * @param {{ locationValues: string[], industryValues: string[], companyValues: string[] }} payload
+ */
+export async function applyTemplateConditions (templateId, payload) {
+  const t = templates.value.find((x) => x.id === templateId)
+  if (!t) return
+
+  if (useConvexBackend()) {
+    const client = getConvexClient()
+    if (!client) return
+    await client.mutation(api.jobTemplates.patchConditionsByExternalId, {
+      externalId: templateId,
+      locationValues: [...payload.locationValues],
+      industryValues: [...payload.industryValues],
+      companyValues: [...payload.companyValues]
+    })
+    convexPullNonce.value++
+    return
+  }
+
+  t.locationValues = [...payload.locationValues]
+  t.industryValues = [...payload.industryValues]
+  t.companyValues = [...payload.companyValues]
+  syncLegacyFieldsFromArrays(t)
+  t.conditionsEditedAt = Date.now()
+  reassignJobs()
+}
+
 export async function setTemplateActive (templateId, active) {
   const t = templates.value.find((x) => x.id === templateId)
   if (!t || t.isDefault) return
+
+  if (useConvexBackend()) {
+    const client = getConvexClient()
+    if (!client) return
+    await client.mutation(api.jobTemplates.setTemplateActiveByExternalId, {
+      externalId: templateId,
+      templateActive: active
+    })
+    convexPullNonce.value++
+    return
+  }
+
   t.templateActive = active
   reassignJobs()
   await updateJobTemplate(templateId, { templateActive: active })
@@ -89,6 +170,24 @@ export async function deleteTemplate (templateId) {
   const t = templates.value.find((x) => x.id === templateId)
   if (!t || t.isDefault) return
   const title = t.title
+
+  if (useConvexBackend()) {
+    const client = getConvexClient()
+    if (!client) return
+    await client.mutation(api.jobTemplates.removeByExternalId, {
+      externalId: templateId
+    })
+    const nextOverrides = { ...manualOverrideByJobId.value }
+    for (const jobId of Object.keys(nextOverrides)) {
+      if (nextOverrides[jobId] === title) {
+        delete nextOverrides[jobId]
+      }
+    }
+    manualOverrideByJobId.value = nextOverrides
+    convexPullNonce.value++
+    return
+  }
+
   const idx = templates.value.findIndex((x) => x.id === templateId)
   templates.value.splice(idx, 1)
   const nextOverrides = { ...manualOverrideByJobId.value }
@@ -117,9 +216,17 @@ function nextUntitledTemplateTitle () {
 
 /**
  * Create a blank non-default template (inactive, no conditions). Persists as an extra template.
- * @returns {Promise<string>} new template id
+ * @returns {Promise<string | null>} new template id, or null if Convex client missing
  */
 export async function createUntitledJobTemplate () {
+  if (useConvexBackend()) {
+    const client = getConvexClient()
+    if (!client) return null
+    const id = await client.mutation(api.jobTemplates.createUntitled, {})
+    convexPullNonce.value++
+    return id
+  }
+
   const title = nextUntitledTemplateTitle()
   const tpl = {
     id: `tpl-new-${Date.now()}`,
@@ -174,6 +281,25 @@ export async function renameTemplate (templateId, newTitle) {
   const trimmed = newTitle.trim()
   if (t.title === trimmed) return
   const oldTitle = t.title
+
+  if (useConvexBackend()) {
+    const client = getConvexClient()
+    if (!client) return
+    await client.mutation(api.jobTemplates.renameByExternalId, {
+      externalId: templateId,
+      title: trimmed
+    })
+    const nextOverrides = { ...manualOverrideByJobId.value }
+    for (const jobId of Object.keys(nextOverrides)) {
+      if (nextOverrides[jobId] === oldTitle) {
+        nextOverrides[jobId] = trimmed
+      }
+    }
+    manualOverrideByJobId.value = nextOverrides
+    convexPullNonce.value++
+    return
+  }
+
   t.title = trimmed
   for (const j of jobs.value) {
     if (j.jobTemplate === oldTitle) {

@@ -12,9 +12,8 @@ import Button from '@/components/ui/Button.vue'
 import ContextMenuItem from '@/components/ui/ContextMenuItem.vue'
 import AlertMessage from '@/components/ui/AlertMessage.vue'
 import {
-  getOrthogonalAmbiguityReport,
-  wouldBlockTemplateApply,
-  ambiguityNoticeParagraphs
+  getOrthogonalConflictDetailForTemplate,
+  ambiguityNoticeParagraphsForAppliedTemplate
 } from '@/src/domain/assignJobTemplates.js'
 
 export interface OverlayJobRow {
@@ -133,21 +132,20 @@ function buildMergedTemplateList (): object[] {
   })
 }
 
-const conflictReport = computed(() => {
+const conflictDetail = computed(() => {
   if (props.template.isDefault) return null
   const merged = buildMergedTemplateList()
-  if (!wouldBlockTemplateApply(props.template.id, merged, props.jobs)) {
-    return null
-  }
-  return getOrthogonalAmbiguityReport(merged, props.jobs)
+  return getOrthogonalConflictDetailForTemplate(
+    props.template.id,
+    merged,
+    props.jobs
+  )
 })
 
 const conflictParagraphs = computed((): string[] | null => {
-  if (!conflictReport.value) return null
-  return ambiguityNoticeParagraphs(
-    conflictReport.value,
-    props.template.title
-  )
+  const d = conflictDetail.value
+  if (!d) return null
+  return ambiguityNoticeParagraphsForAppliedTemplate(d)
 })
 
 const showConflictAlert = computed(
@@ -322,7 +320,13 @@ function onApply () {
   if (!isDirty.value) return
   if (!props.template.isDefault) {
     const merged = buildMergedTemplateList()
-    if (wouldBlockTemplateApply(props.template.id, merged, props.jobs)) {
+    if (
+      getOrthogonalConflictDetailForTemplate(
+        props.template.id,
+        merged,
+        props.jobs
+      )
+    ) {
       conflictAlertDismissed.value = false
       return
     }

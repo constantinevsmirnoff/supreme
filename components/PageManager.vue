@@ -7,23 +7,26 @@
  * While `templateActive === false`, jobs are not auto-assigned to that template (they use the
  * default template). Use `setTemplateActive` from `@/src/state/jobsAndTemplatesStore.js` to toggle.
  */
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import JobListHeader from '@/components/JobListHeader.vue'
 import JobTemplateCard from '@/components/JobTemplateCard.vue'
 import JobTemplateOverlay from '@/components/JobTemplateOverlay.vue'
 import {
   jobs,
   templates,
+  templatesGridView,
   templateCounts,
+  pageManagerSearchDebounced,
   loadJobsAndTemplates,
-  reassignJobs,
+  applyTemplateConditions,
   renameTemplate,
   setTemplateActive,
   duplicateTemplate,
   deleteTemplate,
   createUntitledJobTemplate
 } from '@/src/state/jobsAndTemplatesStore.js'
-import { syncLegacyFieldsFromArrays } from '@/src/domain/assignJobTemplates.js'
+import { useConvexBackend } from '@/src/config/dataBackend.js'
+import { filterTemplatesBySearch, sortTemplatesDefaultFirst } from '@/src/domain/listFilters.js'
 
 type JobTemplate = {
   id: string
@@ -42,6 +45,18 @@ type JobTemplate = {
 }
 
 const searchQuery = ref('')
+
+let templateSearchDebounceTimer: ReturnType<typeof setTimeout> | undefined
+watch(searchQuery, (q) => {
+  clearTimeout(templateSearchDebounceTimer)
+  templateSearchDebounceTimer = setTimeout(() => {
+    pageManagerSearchDebounced.value = q
+  }, 280)
+})
+onBeforeUnmount(() => {
+  clearTimeout(templateSearchDebounceTimer)
+})
+
 const overlayTemplateId = ref<string | null>(null)
 
 const overlayTemplate = computed(
@@ -63,30 +78,15 @@ function conditionPillValues (
   return [conditionLabel(null, dimension)]
 }
 
-function searchBlobForDimension (
-  values: string[],
-  dimension: 'location' | 'industry' | 'company'
-) {
-  return values.length > 0 ? values.join(' ') : conditionLabel(null, dimension)
-}
-
 const filteredTemplates = computed(() => {
-  const q = searchQuery.value.trim().toLowerCase()
-  const list =
-    q === ''
-      ? templates.value
-      : templates.value.filter((t) => {
-          const hay = [
-            t.title,
-            searchBlobForDimension(t.locationValues, 'location'),
-            searchBlobForDimension(t.industryValues, 'industry'),
-            searchBlobForDimension(t.companyValues, 'company')
-          ]
-            .join(' ')
-            .toLowerCase()
-          return hay.includes(q)
-        })
-  return [...list].sort((a, b) => Number(!!b.isDefault) - Number(!!a.isDefault))
+  if (useConvexBackend()) {
+    return templatesGridView.value as JobTemplate[]
+  }
+  const list = filterTemplatesBySearch(
+    templates.value as JobTemplate[],
+    searchQuery.value
+  )
+  return sortTemplatesDefaultFirst(list)
 })
 
 function openOverlay (id: string) {
@@ -103,8 +103,9 @@ function onDeleteTemplate (id: string) {
   })
 }
 
-function onNewTemplate () {
-  void createUntitledJobTemplate()
+async function onNewTemplate () {
+  const id = await createUntitledJobTemplate()
+  if (id) openOverlay(id)
 }
 
 function onTemplateApply (payload: {
@@ -114,15 +115,11 @@ function onTemplateApply (payload: {
 }) {
   const t = overlayTemplate.value
   if (!t) return
-  t.locationValues = [...payload.locationValues]
-  t.industryValues = [...payload.industryValues]
-  t.companyValues = [...payload.companyValues]
-  syncLegacyFieldsFromArrays(t)
-  t.conditionsEditedAt = Date.now()
-  reassignJobs()
+  void applyTemplateConditions(t.id, payload)
 }
 
 onMounted(() => {
+  pageManagerSearchDebounced.value = searchQuery.value
   void loadJobsAndTemplates()
 })
 </script>

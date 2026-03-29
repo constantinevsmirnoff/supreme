@@ -1,6 +1,12 @@
 <script setup>
-import { ref } from 'vue'
-import { RouterView, useRoute } from 'vue-router'
+import { ref, computed } from 'vue'
+import { RouterView, useRoute, useRouter } from 'vue-router'
+import { enableConvexDevelopmentDeployment } from '@/src/config/convexRuntime.js'
+import ConvexWorkspaceSync from '@/components/ConvexWorkspaceSync.vue'
+
+if (import.meta.env.DEV) {
+  enableConvexDevelopmentDeployment()
+}
 import Status from '@/components/ui/Status.vue'
 import Checkbox from '@/components/ui/Checkbox.vue'
 import CloseButton from '@/components/ui/CloseButton.vue'
@@ -14,6 +20,7 @@ import AssignedJob from '@/components/ui/AssignedJob.vue'
 import Button from '@/components/ui/Button.vue'
 import SearchField from '@/components/ui/SearchField.vue'
 import TabSwitcher from '@/components/ui/TabSwitcher.vue'
+import Toolbar from '@/components/ui/Toolbar.vue'
 import TagInput from '@/components/ui/TagInput.vue'
 import ConditionPill from '@/components/ui/ConditionPill.vue'
 import ConditionValue from '@/components/ui/ConditionValue.vue'
@@ -24,6 +31,36 @@ import JobCard from '@/components/JobCard.vue'
 import JobTemplateCard from '@/components/JobTemplateCard.vue'
 
 const route = useRoute()
+const router = useRouter()
+
+/** Toolbar: 0 Jobs, 1 Page Manager, 2 Component Showcase — matches `/jobs`, `/page-manager`, `/` */
+const toolbarNavIndex = computed({
+  get () {
+    switch (route.name) {
+      case 'JobList':
+        return 0
+      case 'PageManager':
+        return 1
+      case 'Showcase':
+        return 2
+      default:
+        return 0
+    }
+  },
+  set (value) {
+    if (value === 0) {
+      router.push({ name: 'JobList' })
+    } else if (value === 1) {
+      router.push({ name: 'PageManager' })
+    } else if (value === 2) {
+      router.push({ name: 'Showcase' })
+    }
+  }
+})
+
+const hasFloatingToolbar = computed(() =>
+  route.name === 'JobList' || route.name === 'PageManager' || route.name === 'Showcase'
+)
 
 const searchQuery = ref('')
 
@@ -69,7 +106,8 @@ const componentLibraryPaths = [
   'components/ui/Status.vue',
   'components/ui/TabSwitcher.vue',
   'components/ui/TagInput.vue',
-  'components/ui/ThreeDotMenu.vue'
+  'components/ui/ThreeDotMenu.vue',
+  'components/ui/Toolbar.vue'
 ]
 
 const checkbox1 = ref(false)
@@ -80,6 +118,8 @@ const checkboxDisabledChecked = ref(true)
 
 const tabSwitcherShowcase = ref(0)
 const tabSwitcherShowcaseLabels = ref(1)
+
+const toolbarShowcase = ref(0)
 
 const tagInputLocationTags = ref(['Value 1', 'Value 2'])
 const tagInputIndustryTags = ref(['Finance', 'Technology'])
@@ -117,7 +157,7 @@ function addTagInputCompany () {
 </script>
 
 <template>
-  <div class="app">
+  <div class="app" :class="{ 'app--floating-toolbar': hasFloatingToolbar }">
     <div v-if="route.name === 'Showcase'" class="showcase page">
       <header class="page__header">
         <h1 class="page__title">UI Kit — Component Showcase</h1>
@@ -280,6 +320,24 @@ function addTagInputCompany () {
               <div class="context-menu-demo context-menu" role="menu" aria-label="Demo with slot">
                 <ContextMenuItem>Custom label</ContextMenuItem>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2 class="section__title">Toolbar</h2>
+          <p class="section__lead">
+            <code class="section__code">components/ui/Toolbar.vue</code> — Figma Toolbar (<a class="app__link" href="https://www.figma.com/design/e5qpHSeHPsA5LAF0zfjhAU/UI-Kit?node-id=134-871" target="_blank" rel="noopener noreferrer">134:871</a>); icons <code class="section__code">icons/jobs.svg</code>, <code class="section__code">page_manager.svg</code>, <code class="section__code">settings.svg</code>.
+          </p>
+          <div class="section__row section__row--wrap">
+            <div class="cell cell--toolbar">
+              <span class="cell__label">Jobs / Page Manager / Showcase</span>
+              <Toolbar v-model="toolbarShowcase" />
+              <p class="cell__hint">Active index: {{ toolbarShowcase }} (0 = Jobs, 1 = Page Manager, 2 = Component Showcase)</p>
+            </div>
+            <div class="cell cell--toolbar">
+              <span class="cell__label">Disabled</span>
+              <Toolbar :model-value="1" disabled />
             </div>
           </div>
         </section>
@@ -525,12 +583,20 @@ function addTagInputCompany () {
       </main>
     </div>
 
-    <RouterView v-else />
+    <template v-else>
+      <ConvexWorkspaceSync />
+      <RouterView />
+    </template>
+
+    <div v-if="hasFloatingToolbar" class="app-toolbar-wrap">
+      <Toolbar v-model="toolbarNavIndex" aria-label="App sections" />
+    </div>
   </div>
 </template>
 
 <style scoped>
 .app {
+  position: relative;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -538,6 +604,25 @@ function addTagInputCompany () {
   min-height: 100vh;
   min-height: 100dvh;
   flex: 1 1 auto;
+}
+
+/** Space for fixed toolbar (≈40px offset + pill height + gap) */
+.app--floating-toolbar {
+  padding-bottom: 96px;
+}
+
+.app-toolbar-wrap {
+  position: fixed;
+  left: 50%;
+  bottom: 40px;
+  z-index: 100;
+  box-sizing: border-box;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.app-toolbar-wrap :deep(.toolbar) {
+  pointer-events: auto;
 }
 
 .app__link {
@@ -632,6 +717,18 @@ function addTagInputCompany () {
   font-weight: var(--typography-body-font-weight-light);
   color: var(--color-text-secondary);
   min-width: 120px;
+}
+
+.cell--toolbar {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cell--toolbar .cell__label {
+  min-width: 0;
+  align-self: flex-start;
 }
 
 .cell--tab-switcher {

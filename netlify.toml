@@ -1,0 +1,7 @@
+# Same flow as Vercel: https://docs.convex.dev/production/hosting/netlify
+[build]
+  command = "npx convex deploy --cmd \"npm run build\" --cmd-url-env-var-name VITE_CONVEX_URL"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"

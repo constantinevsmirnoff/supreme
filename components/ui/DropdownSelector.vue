@@ -247,6 +247,15 @@ function onSelectItem (item: { label: string; value?: string }) {
   }
   emit('select', item.value ?? item.label)
   menuOpen.value = false
+  // After “Auto”, parent keeps `locked` true so the `locked` watcher never runs and the
+  // menu-close branch leaves `sessionUnlocked` set. Read `locked` post-flush.
+  void nextTick(() => {
+    if (props.locked) {
+      sessionUnlocked.value = false
+      pendingUnlockSession.value = false
+      selectedDuringUnlockSession.value = false
+    }
+  })
 }
 
 function onDocPointerDown (e: MouseEvent) {

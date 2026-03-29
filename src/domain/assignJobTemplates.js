@@ -236,6 +236,124 @@ export function wouldBlockTemplateApply (appliedTemplateId, templates, jobs) {
 }
 
 /**
+ * Orthogonal conflict detail scoped to one template (jobs where it participates in an unresolved tie).
+ * @param {string} appliedTemplateId
+ * @param {object[]} templates
+ * @param {Array<{ id: string, location: string, industry: string, company: string }>} jobs
+ * @returns {{
+ *   jobIds: string[],
+ *   jobCount: number,
+ *   appliedTemplateId: string,
+ *   appliedTitle: string,
+ *   appliedDimension: 'location'|'industry'|'company'|null,
+ *   rivals: Array<{ id: string, title: string, dimension: 'location'|'industry'|'company' }>,
+ *   suggestDimensions: ('location'|'industry'|'company')[],
+ *   suggestDimensionLabels: string[]
+ * } | null}
+ */
+export function getOrthogonalConflictDetailForTemplate (
+  appliedTemplateId,
+  templates,
+  jobs
+) {
+  if (!templates.some((t) => t.isDefault)) return null
+  const applied = templates.find((t) => t.id === appliedTemplateId)
+  if (!applied) return null
+
+  const nonDefault = getNonDefaultTemplatesForConditionConflicts(templates)
+  /** @type {Map<string, { id: string, title: string, dimension: 'location'|'industry'|'company' }>} */
+  const rivalMap = new Map()
+  const jobIds = []
+  const suggestDimSet = new Set()
+
+  for (const job of jobs) {
+    const matching = nonDefault.filter((t) => jobMatchesTemplate(job, t))
+    if (matching.length < 2) continue
+    const bestSpec = Math.max(...matching.map((t) => specificity(t)))
+    const atBest = matching.filter((t) => specificity(t) === bestSpec)
+    if (atBest.length < 2) continue
+    const dims = atBest.map((t) => singleConstrainedDimension(t))
+    const allSpec1 = atBest.every((t) => specificity(t) === 1)
+    const allHaveDim = dims.every((d) => d != null)
+    const distinctDims = new Set(dims).size === dims.length
+    if (!(allSpec1 && allHaveDim && distinctDims)) continue
+    if (!atBest.some((t) => t.id === appliedTemplateId)) continue
+
+    jobIds.push(job.id)
+    for (const t of atBest) {
+      if (t.id === appliedTemplateId) continue
+      const d = singleConstrainedDimension(t)
+      if (d) {
+        rivalMap.set(t.id, {
+          id: t.id,
+          title: String(t.title),
+          dimension: d
+        })
+        suggestDimSet.add(d)
+      }
+    }
+  }
+
+  if (jobIds.length === 0) return null
+
+  const appliedDimension = singleConstrainedDimension(applied)
+  const rivals = [...rivalMap.values()].sort((a, b) =>
+    a.title.localeCompare(b.title, undefined, { sensitivity: 'base' })
+  )
+  const suggestDimensions = [...suggestDimSet].sort()
+  return {
+    jobIds,
+    jobCount: jobIds.length,
+    appliedTemplateId,
+    appliedTitle: String(applied.title),
+    appliedDimension,
+    rivals,
+    suggestDimensions,
+    suggestDimensionLabels: suggestDimensions.map((d) => DIMENSION_LABEL[d])
+  }
+}
+
+/**
+ * @param {NonNullable<ReturnType<typeof getOrthogonalConflictDetailForTemplate>>} detail
+ * @returns {string[]}
+ */
+export function ambiguityNoticeParagraphsForAppliedTemplate (detail) {
+  const dimOnly = (d) => `${DIMENSION_LABEL[d]} only`
+  const p1 =
+    'Some jobs match multiple non-default templates that each use a single rule on a different attribute (for example Location on one template and Company on another). Until that is resolved, those jobs stay on the default template.'
+
+  let p2
+  if (detail.rivals.length > 0 && detail.appliedDimension) {
+    const rivalPhrase = detail.rivals
+      .map((r) => `“${r.title}” (${dimOnly(r.dimension)})`)
+      .join(', ')
+    p2 = `Templates involved in the tie with yours: ${rivalPhrase}. Your template “${detail.appliedTitle}” currently only constrains ${DIMENSION_LABEL[detail.appliedDimension]}.`
+  } else if (detail.rivals.length > 0) {
+    const rivalPhrase = detail.rivals
+      .map((r) => `“${r.title}” (${dimOnly(r.dimension)})`)
+      .join(', ')
+    p2 = `Templates involved in the tie: ${rivalPhrase}. Your template “${detail.appliedTitle}” is part of that tie.`
+  } else {
+    p2 = `Your template “${detail.appliedTitle}” is part of a single-rule tie across different attributes with other templates.`
+  }
+
+  let p3
+  if (detail.suggestDimensionLabels.length > 0) {
+    const labels =
+      detail.suggestDimensionLabels.length === 1
+        ? detail.suggestDimensionLabels[0]
+        : detail.suggestDimensionLabels.slice(0, -1).join(', ') +
+          ' and ' +
+          detail.suggestDimensionLabels[detail.suggestDimensionLabels.length - 1]
+    p3 = `To clear the conflict for this template, add conditions on ${labels} (or add combined rules so one template clearly wins). ${detail.jobCount} job${detail.jobCount === 1 ? '' : 's'} ${detail.jobCount === 1 ? 'is' : 'are'} affected.`
+  } else {
+    p3 = `Add more specific rules so each affected job matches only one winning template. ${detail.jobCount} job${detail.jobCount === 1 ? '' : 's'} ${detail.jobCount === 1 ? 'is' : 'are'} affected.`
+  }
+
+  return [p1, p2, p3]
+}
+
+/**
  * @param {Array<{ id: string, jobTemplate: string, location: string, industry: string, company: string }>} jobs - mutated in place
  * @param {Array<object>} templates
  * @param {Record<string, string>} [manualOverrides] - job id -> template title; those jobs skip auto assignment

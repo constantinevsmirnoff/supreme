@@ -5,9 +5,17 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "deploy": "convex deploy --cmd \"npm run build\" --cmd-url-env-var-name VITE_CONVEX_URL",
+    "deploy:preview": "convex deploy --cmd \"npm run build\" --cmd-url-env-var-name VITE_CONVEX_URL --preview-create local-dev",
+    "deploy:backend": "convex deploy",
+    "preview": "vite preview",
+    "convex:login": "convex login",
+    "convex:dev": "convex dev",
+    "convex:codegen": "convex codegen",
+    "convex:dashboard": "convex dashboard"
   },
   "dependencies": {
+    "convex": "^1.34.1",
     "vue": "^3.4.0",
     "vue-router": "^4.6.4"
   },

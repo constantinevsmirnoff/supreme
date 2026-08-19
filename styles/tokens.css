@@ -186,6 +186,27 @@ body {
   --color-critical: #ff453a;
   --color-critical-light: #fbedeb;
   --color-white: #ffffff;
+
+  /* Accent button — frosted iridescent glass (reference palette) */
+  --color-accent-glass-sky: #d4eaff;
+  --color-accent-glass-mist: #ebeff2;
+  --color-accent-glass-peach: #ffedd4;
+  --color-accent-glass-mint: #d4fff7;
+  --color-accent-glass-rose: #ffd4dd;
+  --color-accent-glass-lemon: #fffbd4;
+  --color-accent-glass-border: #d9dee2;
+  --blur-accent-glass-backdrop: 20px;
+  --saturate-accent-glass-backdrop: 170%;
+  --opacity-accent-glass-fill: 48%;
+  --opacity-accent-glass-fill-hover: 58%;
+  /* Iridescent strip: anchored to the right (wider than 1/3 so narrow buttons still read) */
+  --size-accent-glass-iris-width: 46%;
+  --position-accent-glass-iris-x: 100%;
+  --position-accent-glass-iris-y: 50%;
+  /* Soft edge: mask reaches full opacity here (0%–100% = left→right within the strip) */
+  --mask-accent-glass-iris-solid-from: 38%;
+  /* Blur on iridescent layer (diffuses into the button + softens the mask) */
+  --blur-accent-glass-iris: 10px;
 }
 
 /* ========== Typography ========== */
@@ -222,6 +243,12 @@ body {
   --typography-body-line-height: 16px;
   --typography-body-letter-spacing: 0.005em;
 
+  /* Divider label — 12px Demi, all caps (Figma 158:1864) */
+  --typography-divider-label-font-size: 12px;
+  --typography-divider-label-font-weight: 600;
+  --typography-divider-label-line-height: 16px;
+  --typography-divider-label-letter-spacing: 0.06px;
+
   /* Body XL — 13px */
   --typography-body-xl-font-size: 13px;
   --typography-body-xl-font-weight-strong: 600;
@@ -231,11 +258,21 @@ body {
   --typography-body-xl-letter-spacing-strong: -0.01em;
   --typography-body-xl-letter-spacing-light: -0.015em;
 
+  /* Body Large — matches Body XL scale; utility class typography-body-large-* */
+  --typography-body-large-font-size: 13px;
+  --typography-body-large-font-weight-strong: 600;
+  --typography-body-large-font-weight-light: 500;
+  --typography-body-large-line-height-strong: 16px;
+  --typography-body-large-line-height-light: 20px;
+  --typography-body-large-letter-spacing-strong: -0.01em;
+  --typography-body-large-letter-spacing-light: -0.1px;
+
   /* Surfaces & elevation */
   --color-overlay-scrim: rgba(0, 0, 0, 0.35);
   --color-surface-frosted: rgba(255, 255, 255, 0.8);
   --shadow-elevation: 0 7px 22px 0 rgba(0, 0, 0, 0.25);
   --shadow-card-hover: 0 2px 8px 4px rgba(0, 0, 0, 0.05);
+  --shadow-tab-slider-thumb: 0 0.5px 4px 1px rgba(0, 0, 0, 0.15);
 
   --border-width-hairline: 1px;
 
@@ -244,6 +281,9 @@ body {
   --radius-md: 5px;
   --radius-lg: 6px;
   --radius-xl: 25px;
+  --radius-tab-slider: 23px;
+  --radius-tab-slider-thumb: 20px;
+  --width-tab-slider-tab: 125px;
 
   --space-3xs: 3px;
   --space-2xs: 4px;
@@ -355,10 +395,20 @@ body {
   letter-spacing: var(--typography-body-letter-spacing);
 }
 
+.typography-divider-label {
+  font-family: var(--font-family-base);
+  font-size: var(--typography-divider-label-font-size);
+  font-weight: var(--typography-divider-label-font-weight);
+  line-height: var(--typography-divider-label-line-height);
+  letter-spacing: var(--typography-divider-label-letter-spacing);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+}
+
 .typography-body-large-strong {
   font-family: var(--font-family-base);
   font-size: var(--typography-body-large-font-size);
-  font-weight: var(--typography-body-largel-font-weight-strong);
+  font-weight: var(--typography-body-large-font-weight-strong);
   line-height: var(--typography-body-large-line-height-strong);
   letter-spacing: var(--typography-body-large-letter-spacing-strong);
 }

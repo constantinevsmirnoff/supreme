@@ -29,8 +29,7 @@ withDefaults(
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  width: max-content;
-  max-width: 250px;
+  width: fit-content;
   padding: 8px;
   border: 1px solid var(--color-border-strong);
   border-radius: 8px;
@@ -43,8 +42,9 @@ withDefaults(
 
 .annotation__text {
   margin: 0;
-  max-width: 100%;
-  overflow-wrap: break-word;
+  width: max-content;
+  text-align: center;
+  white-space: nowrap;
   font-size: var(--typography-body-font-size);
   font-weight: var(--typography-body-font-weight-light);
   line-height: var(--typography-body-line-height);

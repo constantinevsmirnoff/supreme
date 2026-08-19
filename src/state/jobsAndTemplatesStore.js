@@ -1,21 +1,16 @@
-import { ref, toRaw } from 'vue'
-import { fetchJobs } from '@/src/api/jobs.js'
-import {
-  fetchJobTemplates,
-  updateJobTemplate,
-  appendJobTemplate,
-  removeJobTemplate
-} from '@/src/api/jobTemplates.js'
-import {
-  assignTemplatesToJobs,
-  normalizeJobTemplates,
-  syncLegacyFieldsFromArrays
-} from '@/src/domain/assignJobTemplates.js'
-import { useConvexBackend } from '@/src/config/dataBackend.js'
+import { ref } from 'vue'
 import { getConvexClient, api } from '@/src/lib/convexClient.js'
 
 export const jobs = ref([])
 export const templates = ref([])
+/** @type {import('vue').Ref<Array<{ id: string, title: string, thumbnail: string, isHomepage: boolean, parentFolderId: string | null }>>} */
+export const customPages = ref([])
+/** @type {import('vue').Ref<Array<{ id: string, title: string, thumbnail: string, isHomepage: boolean, parentFolderId: string | null }>>} */
+export const customPagesGridView = ref([])
+/** @type {import('vue').Ref<Array<{ id: string, title: string, parentFolderId: string | null }>>} */
+export const customFolders = ref([])
+/** @type {import('vue').Ref<Array<{ id: string, title: string, parentFolderId: string | null }>>} */
+export const customFoldersGridView = ref([])
 export const templateCounts = ref({})
 /** @type {import('vue').Ref<Record<string, string>>} */
 export const manualOverrideByJobId = ref({})
@@ -25,15 +20,35 @@ export const TEMPLATE_DROPDOWN_AUTO_VALUE = '__auto_assign__'
 
 /** Debounced job-list search (Convex query `jobFilters.search`). */
 export const jobListSearchDebounced = ref('')
+/**
+ * Job list facet filters (locations, industries, companies, templateTitles, status).
+ * Convex: empty arrays / missing status = no constraint for that dimension.
+ * @type {import('vue').Ref<{
+ *   locations: string[]
+ *   industries: string[]
+ *   companies: string[]
+ *   templateTitles: string[]
+ *   status?: 'active' | 'inactive'
+ * }>}
+ */
+export const jobListFacetFilters = ref({
+  locations: [],
+  industries: [],
+  companies: [],
+  templateTitles: [],
+  status: undefined
+})
 /** Debounced Page Manager template search (Convex query `templateFilters.search`). */
 export const pageManagerSearchDebounced = ref('')
-/** Convex: jobs after `jobFilters` (substring search). Mock: unused. */
+/** Jobs after `jobFilters` (substring search). */
 export const jobsListView = ref([])
-/** Convex: templates after `templateFilters` + default-first sort. Mock: unused. */
+/** Templates after `templateFilters` + default-first sort. */
 export const templatesGridView = ref([])
-/** True after `seedIfEmpty` when using Convex. */
+/** Global priority list; top-first. */
+export const assignmentActiveAttributes = ref([])
+/** True after `seedIfEmpty` runs. */
 export const convexBootstrapReady = ref(false)
-/** Bumped after Convex template/job writes so `ConvexWorkspaceSync` re-runs `listWithAssignments`. */
+/** Bumped after Convex writes so `ConvexWorkspaceSync` re-runs `listWithAssignments`. */
 export const convexPullNonce = ref(0)
 
 let loadPromise = null
@@ -41,238 +56,145 @@ let loadPromise = null
 export function loadJobsAndTemplates () {
   if (!loadPromise) {
     loadPromise = (async () => {
-      if (useConvexBackend()) {
-        const client = getConvexClient()
-        if (client) {
-          await client.mutation(api.seed.seedIfEmpty, {})
-        }
-        convexBootstrapReady.value = true
-        return
+      const client = getConvexClient()
+      if (client) {
+        await client.mutation(api.seed.seedIfEmpty, {})
       }
-
-      const [jobRows, tplsRaw] = await Promise.all([
-        fetchJobs(),
-        fetchJobTemplates()
-      ])
-      const tpls = structuredClone(tplsRaw)
-      normalizeJobTemplates(tpls)
-      const rows = structuredClone(jobRows)
-      templateCounts.value = assignTemplatesToJobs(
-        rows,
-        tpls,
-        manualOverrideByJobId.value
-      )
-      templates.value = tpls
-      jobs.value = rows
+      convexBootstrapReady.value = true
     })()
   }
   return loadPromise
 }
 
-export function reassignJobs () {
-  templateCounts.value = assignTemplatesToJobs(
-    jobs.value,
-    templates.value,
-    manualOverrideByJobId.value
-  )
-}
-
-export function clearManualOverrides () {
-  manualOverrideByJobId.value = {}
-  reassignJobs()
+export async function clearManualOverrides () {
+  const client = getConvexClient()
+  if (!client) return
+  await client.mutation(api.jobs.clearAllManualJobTemplates, {})
+  convexPullNonce.value++
 }
 
 /**
  * @param {string} jobId
  * @param {string} templateTitle
  */
-export function setManualTemplateForJob (jobId, templateTitle) {
-  manualOverrideByJobId.value = {
-    ...manualOverrideByJobId.value,
-    [jobId]: templateTitle
-  }
-  reassignJobs()
+export async function setManualTemplateForJob (jobId, templateTitle) {
+  const client = getConvexClient()
+  if (!client) return
+  await client.mutation(api.jobs.setManualJobTemplateByExternalId, {
+    externalId: jobId,
+    manualTemplateTitle: templateTitle
+  })
+  convexPullNonce.value++
 }
 
 /**
  * Remove manual template pick so the job uses conditional auto-assignment again.
  * @param {string} jobId
  */
-export function clearManualTemplateForJob (jobId) {
-  if (!(jobId in manualOverrideByJobId.value)) return
-  const next = { ...manualOverrideByJobId.value }
-  delete next[jobId]
-  manualOverrideByJobId.value = next
-  reassignJobs()
+export async function clearManualTemplateForJob (jobId) {
+  const client = getConvexClient()
+  if (!client) return
+  await client.mutation(api.jobs.setManualJobTemplateByExternalId, {
+    externalId: jobId,
+    manualTemplateTitle: null
+  })
+  convexPullNonce.value++
 }
 
 /**
- * Enable or disable automatic job assignment for a non-default template (Page Manager API).
- * Inactive templates do not receive auto-assigned jobs until `active` is true.
+ * Persist template condition tags from Page Manager overlay.
  * @param {string} templateId
- * @param {boolean} active
- */
-/**
- * Persist template condition tags from Page Manager overlay; reassigns jobs (mock) or syncs via Convex pull.
- * @param {string} templateId
- * @param {{ locationValues: string[], industryValues: string[], companyValues: string[] }} payload
+ * @param {{ locationValues: string[], industryValues: string[], companyValues: string[], titleValues: string[] }} payload
  */
 export async function applyTemplateConditions (templateId, payload) {
-  const t = templates.value.find((x) => x.id === templateId)
-  if (!t) return
-
-  if (useConvexBackend()) {
-    const client = getConvexClient()
-    if (!client) return
-    await client.mutation(api.jobTemplates.patchConditionsByExternalId, {
-      externalId: templateId,
-      locationValues: [...payload.locationValues],
-      industryValues: [...payload.industryValues],
-      companyValues: [...payload.companyValues]
-    })
-    convexPullNonce.value++
-    return
-  }
-
-  t.locationValues = [...payload.locationValues]
-  t.industryValues = [...payload.industryValues]
-  t.companyValues = [...payload.companyValues]
-  syncLegacyFieldsFromArrays(t)
-  t.conditionsEditedAt = Date.now()
-  reassignJobs()
+  const client = getConvexClient()
+  if (!client) return
+  await client.mutation(api.jobTemplates.patchConditionsByExternalId, {
+    externalId: templateId,
+    locationValues: [...payload.locationValues],
+    industryValues: [...payload.industryValues],
+    companyValues: [...payload.companyValues],
+    titleValues: [...(payload.titleValues ?? [])]
+  })
+  convexPullNonce.value++
 }
 
 export async function setTemplateActive (templateId, active) {
   const t = templates.value.find((x) => x.id === templateId)
-  if (!t || t.isDefault) return
-
-  if (useConvexBackend()) {
-    const client = getConvexClient()
-    if (!client) return
+  if (!t || t.isDefault) return { ok: false, code: 'INVALID_TEMPLATE' }
+  const client = getConvexClient()
+  if (!client) return { ok: false, code: 'CLIENT_UNAVAILABLE' }
+  try {
     await client.mutation(api.jobTemplates.setTemplateActiveByExternalId, {
       externalId: templateId,
       templateActive: active
     })
     convexPullNonce.value++
-    return
+    return { ok: true }
+  } catch (err) {
+    const data = err?.data
+    const code =
+      data && typeof data === 'object' && typeof data.code === 'string'
+        ? data.code
+        : 'UNKNOWN'
+    const message =
+      data && typeof data === 'object' && typeof data.message === 'string'
+        ? data.message
+        : (err instanceof Error ? err.message : 'Failed to change template activation.')
+    return { ok: false, code, message, data }
   }
-
-  t.templateActive = active
-  reassignJobs()
-  await updateJobTemplate(templateId, { templateActive: active })
 }
 
 /**
- * Delete a non-default template; reassigns jobs and clears manual overrides for that title.
+ * Persist globally active assignment attributes order.
+ * @param {Array<'location'|'industry'|'company'|'title'>} attributes
+ */
+export async function setAssignmentActiveAttributes (attributes) {
+  const client = getConvexClient()
+  if (!client) return
+  await client.mutation(api.assignmentSettings.setActiveAttributes, {
+    activeAttributes: [...attributes]
+  })
+  convexPullNonce.value++
+}
+
+/**
+ * Delete a non-default template.
  * @param {string} templateId
  */
 export async function deleteTemplate (templateId) {
   const t = templates.value.find((x) => x.id === templateId)
   if (!t || t.isDefault) return
-  const title = t.title
-
-  if (useConvexBackend()) {
-    const client = getConvexClient()
-    if (!client) return
-    await client.mutation(api.jobTemplates.removeByExternalId, {
-      externalId: templateId
-    })
-    const nextOverrides = { ...manualOverrideByJobId.value }
-    for (const jobId of Object.keys(nextOverrides)) {
-      if (nextOverrides[jobId] === title) {
-        delete nextOverrides[jobId]
-      }
-    }
-    manualOverrideByJobId.value = nextOverrides
-    convexPullNonce.value++
-    return
-  }
-
-  const idx = templates.value.findIndex((x) => x.id === templateId)
-  templates.value.splice(idx, 1)
-  const nextOverrides = { ...manualOverrideByJobId.value }
-  for (const jobId of Object.keys(nextOverrides)) {
-    if (nextOverrides[jobId] === title) {
-      delete nextOverrides[jobId]
-    }
-  }
-  manualOverrideByJobId.value = nextOverrides
-  reassignJobs()
-  await removeJobTemplate(templateId)
+  const client = getConvexClient()
+  if (!client) return
+  await client.mutation(api.jobTemplates.removeByExternalId, {
+    externalId: templateId
+  })
+  convexPullNonce.value++
 }
 
 /**
- * Clone a non-default template; copy is inactive and titled "New …".
- * @param {string} templateId
- * @returns {Promise<string | null>} new template id or null
- */
-function nextUntitledTemplateTitle () {
-  const titles = new Set(templates.value.map((t) => t.title))
-  if (!titles.has('Untitled')) return 'Untitled'
-  let n = 2
-  while (titles.has(`Untitled (${n})`)) n++
-  return `Untitled (${n})`
-}
-
-/**
- * Create a blank non-default template (inactive, no conditions). Persists as an extra template.
+ * Create a blank non-default template (inactive, no conditions).
  * @returns {Promise<string | null>} new template id, or null if Convex client missing
  */
 export async function createUntitledJobTemplate () {
-  if (useConvexBackend()) {
-    const client = getConvexClient()
-    if (!client) return null
-    const id = await client.mutation(api.jobTemplates.createUntitled, {})
-    convexPullNonce.value++
-    return id
-  }
-
-  const title = nextUntitledTemplateTitle()
-  const tpl = {
-    id: `tpl-new-${Date.now()}`,
-    title,
-    thumbnail: '',
-    isDefault: false,
-    templateActive: false,
-    locationEquals: null,
-    industryEquals: null,
-    companyEquals: null,
-    locationValues: [],
-    industryValues: [],
-    companyValues: [],
-    conditionsEditedAt: Date.now()
-  }
-  syncLegacyFieldsFromArrays(tpl)
-  const defaultIdx = templates.value.findIndex((x) => x.isDefault)
-  if (defaultIdx === -1) {
-    templates.value.push(tpl)
-  } else {
-    templates.value.splice(defaultIdx, 0, tpl)
-  }
-  reassignJobs()
-  await appendJobTemplate(tpl)
-  return tpl.id
+  const client = getConvexClient()
+  if (!client) return null
+  const id = await client.mutation(api.jobTemplates.createUntitled, {})
+  convexPullNonce.value++
+  return id
 }
 
 export async function duplicateTemplate (templateId) {
   const t = templates.value.find((x) => x.id === templateId)
   if (!t || t.isDefault) return null
-  const clone = structuredClone(toRaw(t))
-  clone.id = `tpl-dup-${Date.now()}`
-  clone.title = `New ${t.title}`
-  clone.isDefault = false
-  clone.templateActive = false
-  clone.conditionsEditedAt = Date.now()
-  syncLegacyFieldsFromArrays(clone)
-  const defaultIdx = templates.value.findIndex((x) => x.isDefault)
-  if (defaultIdx === -1) {
-    templates.value.push(clone)
-  } else {
-    templates.value.splice(defaultIdx, 0, clone)
-  }
-  reassignJobs()
-  await appendJobTemplate(clone)
-  return clone.id
+  const client = getConvexClient()
+  if (!client) return null
+  const newId = await client.mutation(api.jobTemplates.duplicateByExternalId, {
+    externalId: templateId
+  })
+  convexPullNonce.value++
+  return newId
 }
 
 export async function renameTemplate (templateId, newTitle) {
@@ -280,32 +202,208 @@ export async function renameTemplate (templateId, newTitle) {
   if (!t) return
   const trimmed = newTitle.trim()
   if (t.title === trimmed) return
-  const oldTitle = t.title
+  const client = getConvexClient()
+  if (!client) return
+  await client.mutation(api.jobTemplates.renameByExternalId, {
+    externalId: templateId,
+    title: trimmed
+  })
+  convexPullNonce.value++
+}
 
-  if (useConvexBackend()) {
-    const client = getConvexClient()
-    if (!client) return
-    await client.mutation(api.jobTemplates.renameByExternalId, {
-      externalId: templateId,
-      title: trimmed
-    })
-    const nextOverrides = { ...manualOverrideByJobId.value }
-    for (const jobId of Object.keys(nextOverrides)) {
-      if (nextOverrides[jobId] === oldTitle) {
-        nextOverrides[jobId] = trimmed
+/**
+ * POST file to Convex upload URL; returns storage id from JSON body.
+ * @param {string} postUrl
+ * @param {File} file
+ * @param {(percent: number) => void} [onProgress]
+ * @returns {Promise<string>}
+ */
+function postFileToConvexUploadUrl (postUrl, file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', postUrl)
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && typeof onProgress === 'function') {
+        onProgress(Math.round((100 * e.loaded) / e.total))
       }
     }
-    manualOverrideByJobId.value = nextOverrides
-    convexPullNonce.value++
-    return
-  }
-
-  t.title = trimmed
-  for (const j of jobs.value) {
-    if (j.jobTemplate === oldTitle) {
-      j.jobTemplate = t.title
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText)
+          const id = data.storageId
+          if (typeof id === 'string' && id.length > 0) {
+            resolve(id)
+            return
+          }
+        } catch {
+          /* fall through */
+        }
+      }
+      reject(new Error(xhr.responseText || `Upload failed (${xhr.status})`))
     }
+    xhr.onerror = () => reject(new Error('Network error during upload'))
+    xhr.send(file)
+  })
+}
+
+/**
+ * Upload a template thumbnail (JPEG/PNG ≤ 2 MB); validates on client before upload.
+ * @param {string} templateId
+ * @param {File} file
+ * @param {(percent: number) => void} [onProgress]
+ */
+export async function uploadTemplateThumbnail (templateId, file, onProgress) {
+  const maxBytes = 2 * 1024 * 1024
+  const okType =
+    file.type === 'image/jpeg' || file.type === 'image/png'
+  if (!okType || file.size > maxBytes) {
+    throw new Error('Choose a JPG or PNG file up to 2 MB.')
   }
-  reassignJobs()
-  await updateJobTemplate(templateId, { title: trimmed })
+  const client = getConvexClient()
+  if (!client) return
+  const postUrl = await client.mutation(
+    api.jobTemplates.generateThumbnailUploadUrl,
+    {}
+  )
+  const storageId = await postFileToConvexUploadUrl(postUrl, file, onProgress)
+  await client.mutation(api.jobTemplates.finalizeThumbnailUpload, {
+    externalId: templateId,
+    storageId,
+    fileName: file.name
+  })
+  convexPullNonce.value++
+}
+
+/**
+ * Remove template thumbnail from storage and clear fields.
+ * @param {string} templateId
+ */
+export async function clearTemplateThumbnail (templateId) {
+  const client = getConvexClient()
+  if (!client) return
+  await client.mutation(api.jobTemplates.clearThumbnailByExternalId, {
+    externalId: templateId
+  })
+  convexPullNonce.value++
+}
+
+/**
+ * @param {{ title?: string, parentFolderExternalId: string | null }} [opts]
+ * @returns {Promise<string | null>} new folder external id
+ */
+export async function createCustomFolder (opts = {}) {
+  const client = getConvexClient()
+  if (!client) return null
+  const { externalId } = await client.mutation(api.flexiblePages.createFolder, {
+    title: opts.title,
+    parentFolderExternalId: opts.parentFolderExternalId ?? null
+  })
+  convexPullNonce.value++
+  return externalId
+}
+
+/**
+ * @param {{ title?: string, parentFolderExternalId: string | null }} [opts]
+ * @returns {Promise<string | null>} new page external id
+ */
+export async function createFlexibleCustomPage (opts = {}) {
+  const client = getConvexClient()
+  if (!client) return null
+  const { externalId } = await client.mutation(
+    api.flexiblePages.createCustomPage,
+    {
+      title: opts.title,
+      parentFolderExternalId: opts.parentFolderExternalId ?? null
+    }
+  )
+  convexPullNonce.value++
+  return externalId
+}
+
+/**
+ * @param {string[]} pageExternalIds
+ * @param {string | null} targetParentFolderExternalId
+ */
+export async function moveFlexiblePagesToFolder (
+  pageExternalIds,
+  targetParentFolderExternalId
+) {
+  const client = getConvexClient()
+  if (!client) return
+  await client.mutation(api.flexiblePages.moveCustomPages, {
+    pageExternalIds: [...pageExternalIds],
+    targetParentFolderExternalId: targetParentFolderExternalId ?? null
+  })
+  convexPullNonce.value++
+}
+
+/**
+ * @param {string[]} folderExternalIds
+ * @param {string | null} targetParentFolderExternalId
+ */
+export async function moveFlexibleFoldersToFolder (
+  folderExternalIds,
+  targetParentFolderExternalId
+) {
+  const client = getConvexClient()
+  if (!client) return
+  await client.mutation(api.flexiblePages.moveFolders, {
+    folderExternalIds: [...folderExternalIds],
+    targetParentFolderExternalId: targetParentFolderExternalId ?? null
+  })
+  convexPullNonce.value++
+}
+
+/**
+ * @param {string[]} externalIds
+ */
+export async function deleteFlexibleCustomPages (externalIds) {
+  const client = getConvexClient()
+  if (!client) return
+  await client.mutation(api.flexiblePages.deleteCustomPages, {
+    externalIds: [...externalIds]
+  })
+  convexPullNonce.value++
+}
+
+/**
+ * @param {string[]} externalIds
+ */
+export async function deleteFlexibleFoldersRecursive (externalIds) {
+  const client = getConvexClient()
+  if (!client) return
+  await client.mutation(api.flexiblePages.deleteCustomFoldersRecursive, {
+    externalIds: [...externalIds]
+  })
+  convexPullNonce.value++
+}
+
+/**
+ * @param {string} externalId
+ * @param {string} title
+ */
+export async function renameFlexibleCustomPage (externalId, title) {
+  const client = getConvexClient()
+  if (!client) return
+  await client.mutation(api.flexiblePages.renameCustomPageByExternalId, {
+    externalId,
+    title
+  })
+  convexPullNonce.value++
+}
+
+/**
+ * @param {string} externalId
+ * @param {string} title
+ */
+export async function renameFlexibleFolder (externalId, title) {
+  const client = getConvexClient()
+  if (!client) return
+  await client.mutation(api.flexiblePages.renameFolderByExternalId, {
+    externalId,
+    title
+  })
+  convexPullNonce.value++
 }

@@ -11,8 +11,10 @@ const props = withDefaults(
     /** Fallback when modelValue is empty (e.g. showcase without v-model) */
     label?: string
     editable?: boolean
+    /** No chip background (e.g. thumbnail filename row in JobTemplateOverlay). */
+    variant?: 'default' | 'bare'
   }>(),
-  { label: 'Frankfurt', editable: false }
+  { label: 'Frankfurt', editable: false, variant: 'default' }
 )
 
 const model = defineModel<string>({ default: '' })
@@ -68,7 +70,10 @@ function onInputEnter (e: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="condition-value">
+  <div
+    class="condition-value"
+    :class="{ 'condition-value--bare': variant === 'bare' }"
+  >
     <div class="condition-value__label-wrap">
       <input
         v-if="editable"
@@ -194,5 +199,9 @@ function onInputEnter (e: KeyboardEvent) {
   width: 6px;
   height: 6px;
   background-color: var(--color-text-secondary);
+}
+
+.condition-value--bare {
+  background-color: transparent;
 }
 </style>

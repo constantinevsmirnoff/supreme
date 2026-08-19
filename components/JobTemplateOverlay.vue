@@ -1,7 +1,6 @@
 <script setup lang="ts">
 /**
- * Full-screen job template editor (teleport). Conflict notice UI kit piece: `components/ui/AlertMessage.vue` (Figma 92:998).
- * Title + TabSwitcher sit in a sticky header; panels scroll beneath. Footer (Cancel / Apply) only on Conditions when tags are dirty; fades in from opacity 0.
+ * Full-screen job template editor (teleport).
  */
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import CloseButton from '@/components/ui/CloseButton.vue'
@@ -10,11 +9,12 @@ import TagInput from '@/components/ui/TagInput.vue'
 import AssignedJob from '@/components/ui/AssignedJob.vue'
 import Button from '@/components/ui/Button.vue'
 import ContextMenuItem from '@/components/ui/ContextMenuItem.vue'
-import AlertMessage from '@/components/ui/AlertMessage.vue'
-import {
-  getOrthogonalConflictDetailForTemplate,
-  ambiguityNoticeParagraphsForAppliedTemplate
-} from '@/src/domain/assignJobTemplates.js'
+import InputField from '@/components/ui/InputField.vue'
+import ThumbnailUploader from '@/components/ui/ThumbnailUploader.vue'
+import Divider from '@/components/ui/Divider.vue'
+import { manualOverrideByJobId } from '@/src/state/jobsAndTemplatesStore.js'
+
+type AssignmentAttribute = 'location' | 'industry' | 'company' | 'title'
 
 export interface OverlayJobRow {
   id: string
@@ -30,22 +30,20 @@ export interface OverlayJobRow {
 export interface OverlayTemplateModel {
   id: string
   title: string
+  thumbnail?: string
+  thumbnailFileName?: string
   locationValues: string[]
   industryValues: string[]
   companyValues: string[]
-  /** When true, Conditions tab is disabled (default template). */
+  titleValues?: string[]
   isDefault?: boolean
-  /** When false, this template does not participate in automatic assignment. */
   templateActive?: boolean
 }
 
-type TemplateRow = OverlayTemplateModel & Record<string, unknown>
-
 const props = defineProps<{
   template: OverlayTemplateModel
-  /** Full template list (same order as app store) for conflict checks */
-  templates: TemplateRow[]
   jobs: OverlayJobRow[]
+  activeAttributes: AssignmentAttribute[]
 }>()
 
 const emit = defineEmits<{
@@ -56,116 +54,137 @@ const emit = defineEmits<{
       locationValues: string[]
       industryValues: string[]
       companyValues: string[]
+      titleValues: string[]
     }
   ]
+  renameTitle: [title: string]
 }>()
 
 const activeTab = ref(0)
 
+const titleDraft = ref('')
 const locationTags = ref<string[]>([])
 const industryTags = ref<string[]>([])
 const companyTags = ref<string[]>([])
+const titleTags = ref<string[]>([])
 
-const initialSnapshot = ref('')
-
-function snapshotState () {
-  return JSON.stringify({
-    l: locationTags.value,
-    i: industryTags.value,
-    c: companyTags.value
-  })
-}
-
-function syncDraftFromTemplate () {
-  const t = props.template
-  locationTags.value = [...(t.locationValues ?? [])]
-  industryTags.value = [...(t.industryValues ?? [])]
-  companyTags.value = [...(t.companyValues ?? [])]
-  initialSnapshot.value = snapshotState()
-}
-
-watch(
-  () => props.template,
-  () => syncDraftFromTemplate(),
-  { deep: true, immediate: true }
-)
-
-watch(
-  () => props.template.isDefault,
-  (isDef) => {
-    if (isDef) activeTab.value = 1
-  },
-  { immediate: true }
-)
-
-const isDirty = computed(() => snapshotState() !== initialSnapshot.value)
-
-const showConditionsFooter = computed(
-  () =>
-    activeTab.value === 0 &&
-    isDirty.value &&
-    !props.template.isDefault
-)
-
-const conflictAlertDismissed = ref(false)
-
-watch(
-  [locationTags, industryTags, companyTags],
-  () => {
-    conflictAlertDismissed.value = false
-  },
-  { deep: true }
-)
-
-function buildMergedTemplateList (): object[] {
-  return props.templates.map((t) => {
-    const base = { ...t }
-    if (t.id === props.template.id) {
-      return {
-        ...base,
-        locationValues: [...locationTags.value],
-        industryValues: [...industryTags.value],
-        companyValues: [...companyTags.value]
-      }
-    }
-    return base
-  })
-}
-
-const conflictDetail = computed(() => {
-  if (props.template.isDefault) return null
-  const merged = buildMergedTemplateList()
-  return getOrthogonalConflictDetailForTemplate(
-    props.template.id,
-    merged,
-    props.jobs
-  )
-})
-
-const conflictParagraphs = computed((): string[] | null => {
-  const d = conflictDetail.value
-  if (!d) return null
-  return ambiguityNoticeParagraphsForAppliedTemplate(d)
-})
-
-const showConflictAlert = computed(
-  () =>
-    conflictParagraphs.value != null &&
-    conflictParagraphs.value.length > 0 &&
-    !conflictAlertDismissed.value
-)
-
-/** True while current draft conditions would create a blocking assignment conflict. */
-const applyChangesDisabled = computed(() => conflictParagraphs.value != null)
-
-const assignedJobsList = computed(() =>
-  props.jobs.filter((j) => j.jobTemplate === props.template.title)
-)
+const isEditingHeaderTitle = ref(false)
+const headerTitleInputRef = ref<HTMLInputElement | null>(null)
 
 const jobsScrollRef = ref<HTMLElement | null>(null)
 const jobsFadeTop = ref(false)
 const jobsFadeBottom = ref(false)
 let jobsScrollRo: ResizeObserver | null = null
+
+const pickerOpen = ref(false)
+const pickerKind = ref<'location' | 'industry' | 'company'>('location')
+const pickerRect = ref<DOMRect | null>(null)
+const pickerPanelRef = ref<HTMLElement | null>(null)
+
+const initialSnapshot = ref('')
+
+const shellVisible = ref(false)
+const pendingShellEmit = ref<'close' | 'cancel' | null>(null)
+
+function snapshotState () {
+  return JSON.stringify({
+    l: locationTags.value,
+    i: industryTags.value,
+    c: companyTags.value,
+    t: titleTags.value
+  })
+}
+
+function resetDraft () {
+  const s = JSON.parse(initialSnapshot.value) as {
+    l: string[]
+    i: string[]
+    c: string[]
+    t: string[]
+  }
+  locationTags.value = s.l
+  industryTags.value = s.i
+  companyTags.value = s.c
+  titleTags.value = s.t ?? []
+}
+
+function syncDraftFromTemplate () {
+  const t = props.template
+  titleDraft.value = t.title
+  locationTags.value = [...(t.locationValues ?? [])]
+  industryTags.value = [...(t.industryValues ?? [])]
+  companyTags.value = [...(t.companyValues ?? [])]
+  titleTags.value = [...(t.titleValues ?? [])]
+  initialSnapshot.value = snapshotState()
+}
+
+function isAttributeActive (attr: AssignmentAttribute): boolean {
+  return props.activeAttributes.includes(attr)
+}
+
+function commitTitleDraft () {
+  const trimmed = titleDraft.value.trim()
+  if (trimmed === '') {
+    titleDraft.value = props.template.title
+    return
+  }
+  if (trimmed !== props.template.title) {
+    emit('renameTitle', trimmed)
+  }
+}
+
+function startEditingHeaderTitle () {
+  titleDraft.value = props.template.title
+  isEditingHeaderTitle.value = true
+  void nextTick(() => {
+    headerTitleInputRef.value?.focus()
+    headerTitleInputRef.value?.select()
+  })
+}
+
+function saveHeaderTitleEdit () {
+  commitTitleDraft()
+  isEditingHeaderTitle.value = false
+}
+
+function discardHeaderTitleEdit () {
+  titleDraft.value = props.template.title
+  isEditingHeaderTitle.value = false
+}
+
+function onHeaderTitleKeydown (e: KeyboardEvent) {
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    e.stopPropagation()
+    saveHeaderTitleEdit()
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    e.stopPropagation()
+    discardHeaderTitleEdit()
+  } else if (e.key === ' ') {
+    e.stopPropagation()
+  }
+}
+
+const isDirty = computed(() => snapshotState() !== initialSnapshot.value)
+
+const showConditionsFooter = computed(
+  () => activeTab.value === 0 && isDirty.value && !props.template.isDefault
+)
+
+const assignedJobsPartitioned = computed(() => {
+  const title = props.template.title
+  const all = props.jobs.filter((j) => j.jobTemplate === title)
+  const overrides = manualOverrideByJobId.value
+
+  const manual: OverlayJobRow[] = []
+  const auto: OverlayJobRow[] = []
+  for (const j of all) {
+    if (overrides[j.id] === title) manual.push(j)
+    else auto.push(j)
+  }
+  return { manual, auto }
+})
 
 function updateJobsScrollFades () {
   if (activeTab.value !== 1) {
@@ -213,11 +232,6 @@ const uniqueCompanies = computed(() =>
   )
 )
 
-const pickerOpen = ref(false)
-const pickerKind = ref<'location' | 'industry' | 'company'>('location')
-const pickerRect = ref<DOMRect | null>(null)
-const pickerPanelRef = ref<HTMLElement | null>(null)
-
 const pickerOptions = computed(() => {
   let pool: string[]
   let selected: string[]
@@ -237,29 +251,77 @@ const pickerOptions = computed(() => {
   return pool.filter((v) => !selected.includes(v))
 })
 
+const PICKER_PANEL_W = 250
+const PICKER_VIEWPORT_PAD = 8
+const PICKER_CURSOR_PAD = 4
+
 const pickerStyle = computed(() => {
   const r = pickerRect.value
   if (!r) return { display: 'none' }
-  const left = Math.max(
-    8,
-    Math.min(r.left, typeof window !== 'undefined' ? window.innerWidth - 258 : r.left)
-  )
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 800
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 600
+  const approxH = Math.min(320, vh * 0.4)
+  const atPoint = r.width === 0 && r.height === 0
+
+  let left: number
+  let top: number
+
+  if (atPoint) {
+    const cx = r.left
+    const cy = r.top
+    left = cx + PICKER_CURSOR_PAD
+    if (left + PICKER_PANEL_W + PICKER_VIEWPORT_PAD > vw) {
+      left = Math.max(
+        PICKER_VIEWPORT_PAD,
+        cx - PICKER_PANEL_W - PICKER_CURSOR_PAD
+      )
+    }
+    left = Math.max(
+      PICKER_VIEWPORT_PAD,
+      Math.min(left, vw - PICKER_PANEL_W - PICKER_VIEWPORT_PAD)
+    )
+
+    top = cy + PICKER_CURSOR_PAD
+    if (top + approxH + PICKER_VIEWPORT_PAD > vh) {
+      top = Math.max(
+        PICKER_VIEWPORT_PAD,
+        cy - approxH - PICKER_CURSOR_PAD
+      )
+    }
+    top = Math.max(PICKER_VIEWPORT_PAD, Math.min(top, vh - PICKER_VIEWPORT_PAD))
+  } else {
+    left = Math.max(
+      PICKER_VIEWPORT_PAD,
+      Math.min(r.left, vw - 258)
+    )
+    top = r.bottom + PICKER_CURSOR_PAD
+  }
+
   return {
     position: 'fixed' as const,
-    top: `${r.bottom + 4}px`,
+    top: `${top}px`,
     left: `${left}px`,
-    width: '250px',
+    width: `${PICKER_PANEL_W}px`,
     maxHeight: 'min(320px, 40vh)',
     zIndex: 10020
   }
 })
 
-function openPicker (
-  kind: 'location' | 'industry' | 'company',
-  anchor: HTMLElement
-) {
+type PickerAnchor = HTMLElement | { clientX: number; clientY: number }
+
+function openPicker (kind: 'location' | 'industry' | 'company', anchor: PickerAnchor) {
   pickerKind.value = kind
-  pickerRect.value = anchor.getBoundingClientRect()
+  if (typeof HTMLElement !== 'undefined' && anchor instanceof HTMLElement) {
+    pickerRect.value = anchor.getBoundingClientRect()
+  } else {
+    const { clientX, clientY } = anchor
+    pickerRect.value = DOMRect.fromRect({
+      x: clientX,
+      y: clientY,
+      width: 0,
+      height: 0
+    })
+  }
   pickerOpen.value = true
   nextTick(() => {
     pickerPanelRef.value?.querySelector('button')?.focus()
@@ -282,59 +344,49 @@ function selectPickerOption (value: string) {
   closePicker()
 }
 
-function onAddLocation (anchor: HTMLElement) {
-  openPicker('location', anchor)
-}
-function onAddIndustry (anchor: HTMLElement) {
-  openPicker('industry', anchor)
-}
-function onAddCompany (anchor: HTMLElement) {
-  openPicker('company', anchor)
+function onAddLocation (payload: { clientX: number; clientY: number }) {
+  openPicker('location', payload)
 }
 
-function resetDraft () {
-  const s = JSON.parse(initialSnapshot.value) as {
-    l: string[]
-    i: string[]
-    c: string[]
-  }
-  locationTags.value = s.l
-  industryTags.value = s.i
-  companyTags.value = s.c
+function onAddIndustry (payload: { clientX: number; clientY: number }) {
+  openPicker('industry', payload)
+}
+
+function onAddCompany (payload: { clientX: number; clientY: number }) {
+  openPicker('company', payload)
+}
+
+function onShellAfterLeave () {
+  const kind = pendingShellEmit.value
+  pendingShellEmit.value = null
+  if (kind === 'close') emit('close')
+  else if (kind === 'cancel') emit('cancel')
+}
+
+function requestShellClose (kind: 'close' | 'cancel') {
+  closePicker()
+  pendingShellEmit.value = kind
+  shellVisible.value = false
 }
 
 function onClose () {
   resetDraft()
-  closePicker()
   activeTab.value = 0
-  emit('close')
+  requestShellClose('close')
 }
 
 function onCancel () {
   resetDraft()
-  closePicker()
-  emit('cancel')
+  requestShellClose('cancel')
 }
 
 function onApply () {
   if (!isDirty.value) return
-  if (!props.template.isDefault) {
-    const merged = buildMergedTemplateList()
-    if (
-      getOrthogonalConflictDetailForTemplate(
-        props.template.id,
-        merged,
-        props.jobs
-      )
-    ) {
-      conflictAlertDismissed.value = false
-      return
-    }
-  }
   emit('apply', {
     locationValues: [...locationTags.value],
     industryValues: [...industryTags.value],
-    companyValues: [...companyTags.value]
+    companyValues: [...companyTags.value],
+    titleValues: [...titleTags.value]
   })
   initialSnapshot.value = snapshotState()
 }
@@ -345,11 +397,8 @@ function onBackdropPointerDown (e: MouseEvent) {
 
 function onKeydown (e: KeyboardEvent) {
   if (e.key === 'Escape') {
-    if (pickerOpen.value) {
-      closePicker()
-    } else {
-      onClose()
-    }
+    if (pickerOpen.value) closePicker()
+    else onClose()
   }
 }
 
@@ -362,7 +411,10 @@ function onDocPointerDown (e: MouseEvent) {
   closePicker()
 }
 
-const pickerScrollCloseOpts: AddEventListenerOptions = { capture: true, passive: true }
+const pickerScrollCloseOpts: AddEventListenerOptions = {
+  capture: true,
+  passive: true
+}
 
 function onDocumentScrollClosePicker (e: Event) {
   if (!pickerOpen.value) return
@@ -370,6 +422,27 @@ function onDocumentScrollClosePicker (e: Event) {
   if (target instanceof Node && pickerPanelRef.value?.contains(target)) return
   closePicker()
 }
+
+watch(
+  () => props.template,
+  () => syncDraftFromTemplate(),
+  { deep: true, immediate: true }
+)
+
+watch(
+  () => props.template.isDefault,
+  (isDef) => {
+    if (isDef) activeTab.value = 1
+  },
+  { immediate: true }
+)
+
+watch(
+  () => props.template.id,
+  () => {
+    isEditingHeaderTitle.value = false
+  }
+)
 
 watch(activeTab, () => {
   nextTick(() => {
@@ -379,7 +452,7 @@ watch(activeTab, () => {
 })
 
 watch(
-  assignedJobsList,
+  assignedJobsPartitioned,
   () => {
     nextTick(() => {
       updateJobsScrollFades()
@@ -401,7 +474,8 @@ onMounted(() => {
   document.addEventListener('keydown', onKeydown)
   document.addEventListener('pointerdown', onDocPointerDown, true)
   document.addEventListener('scroll', onDocumentScrollClosePicker, pickerScrollCloseOpts)
-  nextTick(() => {
+  void nextTick(() => {
+    shellVisible.value = true
     updateJobsScrollFades()
     syncJobsScrollObserver()
   })
@@ -419,62 +493,118 @@ onBeforeUnmount(() => {
 <template>
   <Teleport to="body">
     <div class="job-template-overlay-root">
-      <div
-        class="job-template-overlay__backdrop"
-        aria-hidden="true"
-        @pointerdown="onBackdropPointerDown"
-      />
-      <div
-        class="job-template-overlay"
-        role="dialog"
-        aria-modal="true"
-        :aria-label="template.title"
-      >
+      <Transition name="job-template-overlay-backdrop">
+        <div
+          v-if="shellVisible"
+          class="job-template-overlay__backdrop"
+          aria-hidden="true"
+          @pointerdown="onBackdropPointerDown"
+        />
+      </Transition>
+      <Transition name="job-template-overlay-panel" @after-leave="onShellAfterLeave">
+        <div
+          v-if="shellVisible"
+          class="job-template-overlay"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="template.title"
+        >
         <div class="job-template-overlay__inner">
-          <div class="job-template-overlay__scroll">
+          <div
+            class="job-template-overlay__scroll"
+          >
             <div class="job-template-overlay__sticky-head">
               <header class="job-template-overlay__header">
-                <h2 class="job-template-overlay__title">{{ template.title }}</h2>
+                <h2
+                  v-if="!isEditingHeaderTitle"
+                  class="job-template-overlay__title job-template-overlay__title--clickable"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="`Template name: ${template.title}. Click to rename.`"
+                  @click="startEditingHeaderTitle"
+                  @keydown.enter.prevent="startEditingHeaderTitle"
+                  @keydown.space.prevent="startEditingHeaderTitle"
+                >
+                  {{ template.title }}
+                </h2>
+                <input
+                  v-else
+                  ref="headerTitleInputRef"
+                  v-model="titleDraft"
+                  type="text"
+                  class="job-template-overlay__title job-template-overlay__title-input"
+                  autocomplete="off"
+                  aria-label="Template name"
+                  @blur="saveHeaderTitleEdit"
+                  @keydown="onHeaderTitleKeydown"
+                  @click.stop
+                />
                 <CloseButton aria-label="Close dialog" @click="onClose" />
               </header>
               <TabSwitcher
                 v-model="activeTab"
                 option-1-label="Conditions"
                 option-2-label="Assigned Jobs"
+                option-3-label="Overview"
                 :option1-disabled="Boolean(template.isDefault)"
                 class="job-template-overlay__tabs"
               />
             </div>
 
             <div class="job-template-overlay__body">
+              <p
+                v-show="activeTab === 0"
+                class="job-template-overlay__conditions-intro"
+              >
+                Set rules for active assignment attributes. Jobs that match are assigned to this template automatically.
+              </p>
               <div
                 v-show="activeTab === 0"
                 class="job-template-overlay__panel job-template-overlay__panel--conditions"
               >
-                <TagInput
-                  v-model="locationTags"
-                  variant="location"
-                  editable
-                  @add="onAddLocation"
-                />
-                <TagInput
-                  v-model="industryTags"
-                  variant="industry"
-                  editable
-                  @add="onAddIndustry"
-                />
-                <TagInput
-                  v-model="companyTags"
-                  variant="company"
-                  editable
-                  @add="onAddCompany"
-                />
-                <AlertMessage
-                  v-if="showConflictAlert"
-                  title="Conflicting rules"
-                  :paragraphs="conflictParagraphs ?? []"
-                  @close="conflictAlertDismissed = true"
-                />
+                <div
+                  v-if="isAttributeActive('location')"
+                  class="job-template-overlay__condition-row"
+                >
+                  <TagInput
+                    v-model="locationTags"
+                    variant="location"
+                    editable
+                    @add="onAddLocation"
+                  />
+                </div>
+                <div
+                  v-if="isAttributeActive('industry')"
+                  class="job-template-overlay__condition-row"
+                >
+                  <TagInput
+                    v-model="industryTags"
+                    variant="industry"
+                    editable
+                    @add="onAddIndustry"
+                  />
+                </div>
+                <div
+                  v-if="isAttributeActive('company')"
+                  class="job-template-overlay__condition-row"
+                >
+                  <TagInput
+                    v-model="companyTags"
+                    variant="company"
+                    editable
+                    @add="onAddCompany"
+                  />
+                </div>
+                <div
+                  v-if="isAttributeActive('title')"
+                  class="job-template-overlay__condition-row"
+                >
+                  <TagInput
+                    v-model="titleTags"
+                    variant="title"
+                    editable
+                  />
+                </div>
               </div>
 
               <div
@@ -487,14 +617,52 @@ onBeforeUnmount(() => {
                     class="job-template-overlay__jobs-scroll"
                     @scroll="updateJobsScrollFades"
                   >
-                    <AssignedJob
-                      v-for="job in assignedJobsList"
-                      :key="job.id"
-                      :job-title="job.jobTitle"
-                      :location="job.location"
-                      :industry="job.industry"
-                      :company="job.company"
-                    />
+                    <div
+                      v-if="assignedJobsPartitioned.manual.length > 0"
+                      class="job-template-overlay__jobs-section"
+                    >
+                      <Divider
+                        class="job-template-overlay__jobs-divider"
+                        label="Manual"
+                      />
+                      <div class="job-template-overlay__jobs-group">
+                        <div
+                          class="job-template-overlay__jobs-group-fade"
+                          aria-hidden="true"
+                        />
+                        <AssignedJob
+                          v-for="job in assignedJobsPartitioned.manual"
+                          :key="job.id"
+                          :job-title="job.jobTitle"
+                          :location="job.location"
+                          :industry="job.industry"
+                          :company="job.company"
+                        />
+                      </div>
+                    </div>
+                    <div
+                      v-if="assignedJobsPartitioned.auto.length > 0"
+                      class="job-template-overlay__jobs-section"
+                    >
+                      <Divider
+                        class="job-template-overlay__jobs-divider"
+                        label="Auto"
+                      />
+                      <div class="job-template-overlay__jobs-group">
+                        <div
+                          class="job-template-overlay__jobs-group-fade"
+                          aria-hidden="true"
+                        />
+                        <AssignedJob
+                          v-for="job in assignedJobsPartitioned.auto"
+                          :key="job.id"
+                          :job-title="job.jobTitle"
+                          :location="job.location"
+                          :industry="job.industry"
+                          :company="job.company"
+                        />
+                      </div>
+                    </div>
                   </div>
                   <div
                     class="job-template-overlay__jobs-fade job-template-overlay__jobs-fade--top"
@@ -511,6 +679,24 @@ onBeforeUnmount(() => {
                     aria-hidden="true"
                   />
                 </div>
+              </div>
+
+              <div
+                v-show="activeTab === 2"
+                class="job-template-overlay__panel job-template-overlay__panel--overview"
+              >
+                <InputField
+                  v-model="titleDraft"
+                  label="Template Name"
+                  :placeholder="template.title"
+                  autocomplete="off"
+                  @blur="commitTitleDraft"
+                />
+                <ThumbnailUploader
+                  :template-id="template.id"
+                  :image-url="template.thumbnail ?? ''"
+                  :file-name="template.thumbnailFileName ?? ''"
+                />
               </div>
             </div>
           </div>
@@ -530,7 +716,6 @@ onBeforeUnmount(() => {
               <Button
                 variant="accent"
                 class="job-template-overlay__action"
-                :disabled="applyChangesDisabled"
                 @click="onApply"
               >
                 Apply changes
@@ -538,7 +723,8 @@ onBeforeUnmount(() => {
             </footer>
           </Transition>
         </div>
-      </div>
+        </div>
+      </Transition>
 
       <div
         v-show="pickerOpen"
@@ -572,6 +758,50 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
+/* Same motion as `ContextMenuItem.vue` `.context-menu` (opacity + scale, 0.22s ease). */
+.job-template-overlay-backdrop-enter-active,
+.job-template-overlay-backdrop-leave-active {
+  transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.job-template-overlay-backdrop-enter-from,
+.job-template-overlay-backdrop-leave-to {
+  opacity: 0;
+}
+
+.job-template-overlay-panel-enter-active,
+.job-template-overlay-panel-leave-active {
+  transition:
+    opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.job-template-overlay-panel-enter-from,
+.job-template-overlay-panel-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .job-template-overlay-backdrop-enter-active,
+  .job-template-overlay-backdrop-leave-active,
+  .job-template-overlay-panel-enter-active,
+  .job-template-overlay-panel-leave-active {
+    transition: none;
+  }
+
+  .job-template-overlay-backdrop-enter-from,
+  .job-template-overlay-backdrop-leave-to {
+    opacity: 1;
+  }
+
+  .job-template-overlay-panel-enter-from,
+  .job-template-overlay-panel-leave-to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+
 .job-template-overlay__backdrop {
   position: absolute;
   inset: 0;
@@ -590,7 +820,7 @@ onBeforeUnmount(() => {
   width: min(726px, calc(100vw - 48px));
   height: 80vh;
   max-height: 700px;
-  padding: 25px 25px 25px;
+  padding: 40px;
   border-radius: 25px;
   background-color: var(--color-white);
   box-shadow: 0 7px 22px 0 rgba(0, 0, 0, 0.25);
@@ -612,7 +842,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
-  gap: 15px;
+  gap: 30px;
   min-height: 0;
   min-width: 0;
   overflow: auto;
@@ -624,11 +854,10 @@ onBeforeUnmount(() => {
   z-index: 2;
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 0;
   flex-shrink: 0;
-  padding-bottom: 15px;
+  padding-bottom: 0;
   background-color: var(--color-white);
-  box-shadow: 0 1px 0 var(--color-border-light);
 }
 
 .job-template-overlay__header {
@@ -638,6 +867,8 @@ onBeforeUnmount(() => {
   align-items: flex-start;
   gap: 15px;
   flex-shrink: 0;
+  height: fit-content;
+  margin-bottom: 15px;
 }
 
 .job-template-overlay__title {
@@ -654,6 +885,33 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
 }
 
+.job-template-overlay__title--clickable {
+  cursor: pointer;
+}
+
+.job-template-overlay__title--clickable:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
+}
+
+.job-template-overlay__title-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background-color: var(--color-white);
+  font-family: var(--font-family-base);
+}
+
+.job-template-overlay__title-input:focus,
+.job-template-overlay__title-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border: none;
+}
+
 .job-template-overlay__body {
   display: flex;
   flex-direction: column;
@@ -663,6 +921,16 @@ onBeforeUnmount(() => {
   min-width: 0;
   flex: 1 1 auto;
   min-height: 0;
+}
+
+.job-template-overlay__conditions-intro {
+  margin: 0;
+  max-width: 100%;
+  font-size: var(--typography-body-xl-font-size);
+  font-weight: var(--typography-body-xl-font-weight-light);
+  line-height: var(--typography-body-xl-line-height-light);
+  letter-spacing: var(--typography-body-xl-letter-spacing-light);
+  color: var(--color-text-tertiary);
 }
 
 .job-template-overlay__tabs {
@@ -681,6 +949,20 @@ onBeforeUnmount(() => {
 
 .job-template-overlay__panel--conditions {
   flex: 0 1 auto;
+}
+
+.job-template-overlay__condition-row {
+  width: 100%;
+  min-width: 0;
+}
+
+.job-template-overlay__conflict-flyout {
+  pointer-events: auto;
+}
+
+.job-template-overlay__panel--overview {
+  flex: 0 1 auto;
+  align-items: stretch;
 }
 
 .job-template-overlay__panel--jobs {
@@ -711,6 +993,57 @@ onBeforeUnmount(() => {
   overflow: auto;
   padding: 0;
   scrollbar-width: none;
+}
+
+.job-template-overlay__jobs-section {
+  --job-template-overlay-divider-block-height: calc(
+    var(--space-md) + var(--typography-divider-label-line-height) +
+      var(--space-md) + var(--border-width-hairline)
+  );
+  display: flex;
+  flex-direction: column;
+  gap: 0px;
+  align-items: stretch;
+  min-width: 0;
+}
+
+/**
+ * Sticky within the jobs scroller: stays at the top until every job in this
+ * section has scrolled past (section is the sticky containing block).
+ */
+.job-template-overlay__jobs-divider {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background-color: var(--color-white);
+}
+
+/** Jobs under the divider + white fade so rows soften into the header strip */
+.job-template-overlay__jobs-group {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  position: relative;
+  min-width: 0;
+}
+
+/**
+ * Sticky just under the divider row: white at top fading down so scrolling
+ * cards appear to dissolve below the section label.
+ */
+.job-template-overlay__jobs-group-fade {
+  position: sticky;
+  top: var(--job-template-overlay-divider-block-height);
+  flex-shrink: 0;
+  height: 20px;
+  margin-bottom: -20px;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    var(--color-white) 0%,
+    rgba(255, 255, 255, 0) 100%
+  );
 }
 
 .job-template-overlay__jobs-scroll::-webkit-scrollbar {

@@ -1,14 +1,12 @@
 <script setup lang="ts">
 /**
  * Job List screen — hosts JobListHeader and scrollable list of JobCards.
- * Each job’s `location` from fetchJobs() is a single German city (see `src/api/mockJobData.js` LOCATIONS).
- * Each job’s `company` is one of three employers (see `COMPANIES` in the same file).
+ * Data from Convex `listWithAssignments` (filtered by debounced search).
  */
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import JobListHeader from '@/components/JobListHeader.vue'
 import JobCard from '@/components/JobCard.vue'
 import {
-  jobs,
   jobsListView,
   templates,
   manualOverrideByJobId,
@@ -19,16 +17,11 @@ import {
   clearManualOverrides,
   TEMPLATE_DROPDOWN_AUTO_VALUE
 } from '@/src/state/jobsAndTemplatesStore.js'
-import { useConvexBackend } from '@/src/config/dataBackend.js'
-import { filterJobsBySearch } from '@/src/domain/listFilters.js'
-
 type Job = {
   id: string
   jobTitle: string
-  /** Single German city from mock `LOCATIONS` in `src/api/mockJobData.js` */
   location: string
   industry: string
-  /** One of the three names in mock `COMPANIES` */
   company: string
   jobTemplate: string
   active: boolean
@@ -48,12 +41,7 @@ onBeforeUnmount(() => {
   clearTimeout(jobSearchDebounceTimer)
 })
 
-const filteredJobs = computed(() => {
-  if (useConvexBackend()) {
-    return jobsListView.value as Job[]
-  }
-  return filterJobsBySearch(jobs.value as Job[], searchQuery.value)
-})
+const filteredJobs = computed(() => jobsListView.value as Job[])
 
 const templateOptions = computed(() =>
   (templates.value as { title: string; isDefault?: boolean; templateActive?: boolean }[])
@@ -63,10 +51,19 @@ const templateOptions = computed(() =>
 
 function onSelectTemplate (jobId: string, title: string) {
   if (title === TEMPLATE_DROPDOWN_AUTO_VALUE) {
-    clearManualTemplateForJob(jobId)
+    void clearManualTemplateForJob(jobId)
     return
   }
-  setManualTemplateForJob(jobId, title)
+  void setManualTemplateForJob(jobId, title)
+}
+
+/** Context menu “Switch template”: apply to all selected jobs if any selected, else the row under the pointer. */
+function onSwitchTemplate (contextJobId: string, templateTitle: string) {
+  const ids =
+    selectedJobIds.value.size > 0
+      ? [...selectedJobIds.value]
+      : [contextJobId]
+  void Promise.all(ids.map((id) => setManualTemplateForJob(id, templateTitle)))
 }
 
 const selectedJobIds = ref(new Set<string>())
@@ -100,22 +97,25 @@ onMounted(() => {
   <div class="job-list">
     <JobListHeader
       v-model:search-query="searchQuery"
-      @clear-manual-overrides="clearManualOverrides"
+      @clear-manual-overrides="() => void clearManualOverrides()"
     />
-    <main class="job-list__main">
-      <JobCard
-        v-for="job in filteredJobs"
-        :key="job.id"
-        :job="job"
-        :selected="selectedJobIds.has(job.id)"
-        :assignment-locked="isAssignmentLocked(job.id)"
-        :template-options="templateOptions"
-        @update:selected="setJobSelected(job.id, $event)"
-        @select-all="selectAllInFilteredList"
-        @deselect-all="deselectAllSelected"
-        @select-template="onSelectTemplate(job.id, $event)"
-      />
-    </main>
+    <div class="job-list__scroll-shell">
+      <main class="job-list__main">
+        <JobCard
+          v-for="job in filteredJobs"
+          :key="job.id"
+          :job="job"
+          :selected="selectedJobIds.has(job.id)"
+          :assignment-locked="isAssignmentLocked(job.id)"
+          :template-options="templateOptions"
+          @update:selected="setJobSelected(job.id, $event)"
+          @select-all="selectAllInFilteredList"
+          @deselect-all="deselectAllSelected"
+          @select-template="onSelectTemplate(job.id, $event)"
+          @switch-template="onSwitchTemplate(job.id, $event)"
+        />
+      </main>
+    </div>
   </div>
 </template>
 
@@ -128,6 +128,44 @@ onMounted(() => {
   overflow: hidden;
   background-color: var(--color-background-primary);
   font-family: var(--font-family-base);
+}
+
+.job-list__scroll-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+}
+
+.job-list__scroll-shell::before,
+.job-list__scroll-shell::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 20px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.job-list__scroll-shell::before {
+  top: 0;
+  background: linear-gradient(
+    to bottom,
+    var(--color-background-primary),
+    transparent
+  );
+}
+
+.job-list__scroll-shell::after {
+  bottom: 0;
+  background: linear-gradient(
+    to top,
+    var(--color-background-primary),
+    transparent
+  );
 }
 
 .job-list__main {

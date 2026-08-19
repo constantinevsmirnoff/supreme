@@ -11,15 +11,18 @@
     "preview": "vite preview",
     "convex:login": "convex login",
     "convex:dev": "convex dev",
+    "convex:push-dev": "env CONVEX_DEPLOY_KEY= npx convex dev --once",
     "convex:codegen": "convex codegen",
     "convex:dashboard": "convex dashboard"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "convex": "^1.34.1",
     "vue": "^3.4.0",
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
+    "@types/node": "^25.5.2",
     "@vitejs/plugin-vue": "^5.0.0",
     "vite": "^5.0.0"
   }

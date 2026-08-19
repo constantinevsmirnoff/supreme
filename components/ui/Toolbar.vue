@@ -7,6 +7,7 @@ import { computed } from 'vue'
 import jobsIconUrl from '@/icons/jobs.svg?url'
 import pageManagerIconUrl from '@/icons/page_manager.svg?url'
 import settingsIconUrl from '@/icons/settings.svg?url'
+import aiBrainIconUrl from '@/icons/ai_brain.svg?url'
 
 const props = withDefaults(
   defineProps<{
@@ -25,6 +26,8 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   'update:modelValue': [value: number]
+  /** AI agent control (Figma UI-Kit node 186:2598) */
+  'ai-agent': []
 }>()
 
 const items = [
@@ -61,35 +64,53 @@ function select (index: number) {
   if (index === props.modelValue) return
   emit('update:modelValue', index)
 }
+
+function onAiAgent () {
+  if (props.disabled) return
+  emit('ai-agent')
+}
 </script>
 
 <template>
   <div class="toolbar">
-    <div
-      class="toolbar__track"
-      role="toolbar"
-      :aria-label="ariaLabel"
-      :aria-disabled="disabled ? 'true' : undefined"
-    >
+    <div class="toolbar__cluster">
       <div
-        class="toolbar__indicator"
-        :style="indicatorStyle"
-        aria-hidden="true"
-      />
+        class="toolbar__track"
+        role="toolbar"
+        :aria-label="ariaLabel"
+        :aria-disabled="disabled ? 'true' : undefined"
+      >
+        <div
+          class="toolbar__indicator"
+          :style="indicatorStyle"
+          aria-hidden="true"
+        />
+        <button
+          v-for="(item, index) in items"
+          :id="item.id"
+          :key="item.id"
+          type="button"
+          class="toolbar__btn"
+          :class="{ 'toolbar__btn--active': modelValue === index }"
+          :aria-pressed="modelValue === index"
+          :disabled="disabled"
+          :aria-label="item.label"
+          @click="select(index)"
+        >
+          <span class="toolbar__icon-wrap" aria-hidden="true">
+            <span class="toolbar__icon" :style="maskStyle(item.iconUrl)" />
+          </span>
+        </button>
+      </div>
       <button
-        v-for="(item, index) in items"
-        :id="item.id"
-        :key="item.id"
         type="button"
-        class="toolbar__btn"
-        :class="{ 'toolbar__btn--active': modelValue === index }"
-        :aria-pressed="modelValue === index"
+        class="toolbar__ai"
+        aria-label="AI agent"
         :disabled="disabled"
-        :aria-label="item.label"
-        @click="select(index)"
+        @click="onAiAgent"
       >
         <span class="toolbar__icon-wrap" aria-hidden="true">
-          <span class="toolbar__icon" :style="maskStyle(item.iconUrl)" />
+          <span class="toolbar__icon" :style="maskStyle(aiBrainIconUrl)" />
         </span>
       </button>
     </div>
@@ -102,6 +123,12 @@ function select (index: number) {
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
+}
+
+.toolbar__cluster {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xl);
 }
 
 .toolbar__track {
@@ -178,5 +205,36 @@ function select (index: number) {
 
 .toolbar__btn--active {
   color: var(--color-text-secondary);
+}
+
+.toolbar__ai {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 46px;
+  height: 46px;
+  margin: 0;
+  padding: 0;
+  border: var(--border-width-hairline) solid var(--color-border-strong);
+  border-radius: 50%;
+  background-color: var(--color-border-light);
+  -webkit-backdrop-filter: blur(var(--blur-backdrop-sm));
+  backdrop-filter: blur(var(--blur-backdrop-sm));
+  cursor: pointer;
+  color: var(--color-text-secondary);
+}
+
+.toolbar__ai:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.toolbar__ai:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 </style>

@@ -2,6 +2,7 @@
 /**
  * Dropdown Selector — Figma: Dropdown Selector (node 6:1660)
  * States: Default, Hover, Focus, Disabled, Locked (auto-assigned job: press-hold 700ms to unlock).
+ * Unlocked (manual template or after hold): `--color-focus-ring` border, `--color-primary-muted` background.
  * Lead icons: locked.svg / unlocked.svg. Optional menu: ContextMenuItem rows.
  */
 import {
@@ -14,11 +15,14 @@ import {
 } from 'vue'
 import ContextMenuItem from '@/components/ui/ContextMenuItem.vue'
 import Annotation from '@/components/ui/Annotation.vue'
+import { TEMPLATE_DROPDOWN_AUTO_VALUE } from '@/src/state/jobsAndTemplatesStore.js'
 import lockedIconUrl from '@/icons/locked.svg?url'
 import unlockedIconUrl from '@/icons/unlocked.svg?url'
 
 const HOLD_MS = 700
 const ICON_OPEN_DELAY_MS = 280
+const LABEL_WIDTH_MS = 240
+const LABEL_WIDTH_EASE = 'cubic-bezier(0.4, 0, 0.2, 1)'
 
 /** Keep in sync with `.dropdown` / `--dropdown-border-radius` */
 const DROPDOWN_BORDER_RADIUS_PX = 5
@@ -108,6 +112,11 @@ const stateClass = computed(() => {
   return 'dropdown--default'
 })
 
+/** Unlocked (manual template or after hold): focus-tone border + primary-muted surface */
+const showUnlockedChrome = computed(
+  () => !assignmentLockedUi.value && !props.disabled
+)
+
 function measureGlowBox () {
   const btn = buttonRef.value
   if (!btn) return
@@ -186,6 +195,44 @@ watch(
   }
 )
 
+let labelWidthFallbackTimer = 0
+
+watch(
+  () => props.label,
+  async (next, prev) => {
+    if (props.readonly) return
+    if (prev === undefined || next === prev) return
+    const btn = buttonRef.value
+    if (!btn) return
+    const startPx = Math.ceil(btn.getBoundingClientRect().width)
+    await nextTick()
+    const endPx = Math.ceil(btn.getBoundingClientRect().width)
+    if (startPx === endPx) return
+    btn.style.overflow = 'hidden'
+    btn.style.width = `${startPx}px`
+    const finish = () => {
+      btn.style.width = ''
+      btn.style.overflow = ''
+      btn.style.transition = ''
+      btn.removeEventListener('transitionend', onEnd)
+    }
+    const onEnd = (e: TransitionEvent) => {
+      if (e.propertyName !== 'width') return
+      finish()
+    }
+    btn.addEventListener('transitionend', onEnd)
+    clearTimeout(labelWidthFallbackTimer)
+    labelWidthFallbackTimer = window.setTimeout(finish, LABEL_WIDTH_MS + 80)
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        btn.style.transition = `width ${LABEL_WIDTH_MS}ms ${LABEL_WIDTH_EASE}`
+        btn.style.width = `${endPx}px`
+      })
+    })
+  },
+  { flush: 'pre' }
+)
+
 function updateMenuPosition () {
   const el = anchorWrapRef.value
   if (!el || typeof window === 'undefined') return
@@ -245,12 +292,17 @@ function onSelectItem (item: { label: string; value?: string }) {
   if (pendingUnlockSession.value) {
     selectedDuringUnlockSession.value = true
   }
-  emit('select', item.value ?? item.label)
+  const value = item.value ?? item.label
+  emit('select', value)
   menuOpen.value = false
-  // After “Auto”, parent keeps `locked` true so the `locked` watcher never runs and the
-  // menu-close branch leaves `sessionUnlocked` set. Read `locked` post-flush.
+  // Only snap back to locked chrome when user chose “Auto” (assignment stays locked).
+  // For a manual template, `locked` becomes false after the parent/store updates; resetting
+  // here while `props.locked` is still true caused a visible flicker.
   void nextTick(() => {
-    if (props.locked) {
+    if (
+      props.locked &&
+      value === TEMPLATE_DROPDOWN_AUTO_VALUE
+    ) {
       sessionUnlocked.value = false
       pendingUnlockSession.value = false
       selectedDuringUnlockSession.value = false
@@ -279,6 +331,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  clearTimeout(labelWidthFallbackTimer)
   cancelHold()
   document.removeEventListener('scroll', onDocumentScrollCloseMenu, scrollCloseOpts)
   document.removeEventListener('pointerdown', onDocPointerDown, true)
@@ -339,7 +392,7 @@ const glowSnakeDashOffset = computed(
     @mouseleave="isHover = false"
   >
     <span :id="annotationHintId" class="dropdown__sr-only">
-      Press and hold to unlock template selection.
+      Press and hold to select the preset manually.
     </span>
     <div class="dropdown__shell">
       <svg
@@ -376,7 +429,7 @@ const glowSnakeDashOffset = computed(
         ref="buttonRef"
         type="button"
         class="dropdown"
-        :class="stateClass"
+        :class="[stateClass, { 'dropdown--unlocked': showUnlockedChrome }]"
         :disabled="disabled"
         :aria-expanded="hasMenu && !interactionLocked ? menuOpen : undefined"
         :aria-haspopup="hasMenu ? 'menu' : undefined"
@@ -394,10 +447,16 @@ const glowSnakeDashOffset = computed(
             class="dropdown__icon-window"
             :class="{ 'dropdown__icon-window--unlocked': !assignmentLockedUi }"
           >
-            <span class="dropdown__icon-track">
-              <img class="dropdown__icon-img" :src="lockedIconUrl" alt="">
-              <img class="dropdown__icon-img" :src="unlockedIconUrl" alt="">
-            </span>
+            <img
+              class="dropdown__icon-img dropdown__icon-img--locked"
+              :src="lockedIconUrl"
+              alt=""
+            >
+            <img
+              class="dropdown__icon-img dropdown__icon-img--unlocked"
+              :src="unlockedIconUrl"
+              alt=""
+            >
           </span>
         </span>
         <span class="dropdown__label">{{ label }}</span>
@@ -409,7 +468,7 @@ const glowSnakeDashOffset = computed(
       </button>
     </div>
     <div v-show="showAnnotationLayer" class="dropdown__annotation">
-      <Annotation text="Press and hold to unlock" />
+      <Annotation text="Press and hold to select the preset manually" />
     </div>
   </div>
   <Teleport to="body">
@@ -425,6 +484,7 @@ const glowSnakeDashOffset = computed(
         v-for="(item, idx) in menuItems"
         :key="item.value ?? item.label ?? idx"
         :label="item.label"
+        :icon="item.value === TEMPLATE_DROPDOWN_AUTO_VALUE ? lockedIconUrl : undefined"
         @click="onSelectItem(item)"
       />
     </div>
@@ -475,6 +535,7 @@ const glowSnakeDashOffset = computed(
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  box-sizing: border-box;
   padding: 0px 6px;
   border: 1px solid;
   border-radius: var(--dropdown-border-radius, 5px);
@@ -508,6 +569,18 @@ const glowSnakeDashOffset = computed(
   box-shadow: 0 0 0 1px var(--color-focus-ring);
 }
 
+.dropdown--unlocked.dropdown--default,
+.dropdown--unlocked.dropdown--hover {
+  border-color: var(--color-focus-ring);
+  background-color: var(--color-primary-muted);
+}
+
+.dropdown--unlocked.dropdown--focus {
+  border-color: var(--color-focus-ring);
+  background-color: var(--color-primary-muted);
+  box-shadow: 0 0 0 1px var(--color-focus-ring);
+}
+
 .dropdown--disabled {
   border-color: var(--color-border-strong);
   background-color: var(--color-background-tertiary);
@@ -531,24 +604,14 @@ const glowSnakeDashOffset = computed(
 }
 
 .dropdown__icon-window {
+  --icon-lock-ease: cubic-bezier(0.33, 0.86, 0.25, 1);
+  --icon-lock-duration: 0.52s;
+  --icon-blur-scale: 0.86;
+  position: relative;
   display: block;
   width: 10px;
   height: 10px;
   overflow: hidden;
-}
-
-.dropdown__icon-track {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  width: 20px;
-  height: 10px;
-  transform: translateX(0);
-  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.dropdown__icon-window--unlocked .dropdown__icon-track {
-  transform: translateX(-10px);
 }
 
 .dropdown__icon-img {
@@ -558,7 +621,38 @@ const glowSnakeDashOffset = computed(
   max-width: 10px;
   max-height: 10px;
   object-fit: contain;
-  flex-shrink: 0;
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: center center;
+  transition:
+    opacity var(--icon-lock-duration) var(--icon-lock-ease),
+    filter var(--icon-lock-duration) var(--icon-lock-ease),
+    transform var(--icon-lock-duration) var(--icon-lock-ease);
+}
+
+.dropdown__icon-img--locked {
+  opacity: 1;
+  filter: blur(0);
+  transform: scale(1);
+}
+
+.dropdown__icon-img--unlocked {
+  opacity: 0;
+  filter: blur(3px);
+  transform: scale(var(--icon-blur-scale));
+}
+
+.dropdown__icon-window--unlocked .dropdown__icon-img--locked {
+  opacity: 0;
+  filter: blur(3px);
+  transform: scale(var(--icon-blur-scale));
+}
+
+.dropdown__icon-window--unlocked .dropdown__icon-img--unlocked {
+  opacity: 1;
+  filter: blur(0);
+  transform: scale(1);
 }
 
 .dropdown__chevron {
@@ -581,6 +675,7 @@ const glowSnakeDashOffset = computed(
   left: 50%;
   transform: translateX(-50%);
   margin-top: 6px;
+  width: fit-content;
   z-index: 20;
   pointer-events: none;
 }

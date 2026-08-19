@@ -1,24 +1,29 @@
 <script setup lang="ts">
 /**
  * Tab switcher — Figma: TabSwitcher (node 82:5943)
- * Two options; click inactive to switch. Active: primary + animated underline to label width.
+ * Two or three options; click inactive to switch. Active: primary + animated underline to label width.
  */
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 
 const props = withDefaults(
   defineProps<{
-    /** 0 = first option, 1 = second */
+    /** 0 = first option, 1 = second, 2 = third when `option3Label` is set */
     modelValue?: number
     option1Label?: string
     option2Label?: string
+    /** When non-empty, a third tab is shown (e.g. Overview in JobTemplateOverlay). */
+    option3Label?: string
     /** When true, first tab is not selectable (e.g. Conditions on default template) */
     option1Disabled?: boolean
+    option3Disabled?: boolean
   }>(),
   {
     modelValue: 0,
     option1Label: 'Option 1',
     option2Label: 'Option 2',
-    option1Disabled: false
+    option3Label: '',
+    option1Disabled: false,
+    option3Disabled: false
   }
 )
 
@@ -29,6 +34,9 @@ const emit = defineEmits<{
 const rootRef = ref<HTMLElement | null>(null)
 const label0Ref = ref<HTMLElement | null>(null)
 const label1Ref = ref<HTMLElement | null>(null)
+const label2Ref = ref<HTMLElement | null>(null)
+
+const hasThreeTabs = computed(() => props.option3Label.trim().length > 0)
 
 const underlineLeft = ref(0)
 const underlineWidth = ref(0)
@@ -37,7 +45,12 @@ const underlineTransitionEnabled = ref(false)
 
 function measure () {
   const root = rootRef.value
-  const labelEl = props.modelValue === 0 ? label0Ref.value : label1Ref.value
+  const labelEl =
+    props.modelValue === 0
+      ? label0Ref.value
+      : props.modelValue === 1
+        ? label1Ref.value
+        : label2Ref.value
   if (!root || !labelEl) return
   const r = root.getBoundingClientRect()
   const l = labelEl.getBoundingClientRect()
@@ -58,8 +71,9 @@ function scheduleMeasure () {
   })
 }
 
-function onSelect (index: 0 | 1) {
+function onSelect (index: 0 | 1 | 2) {
   if (index === 0 && props.option1Disabled) return
+  if (index === 2 && props.option3Disabled) return
   if (index === props.modelValue) return
   emit('update:modelValue', index)
 }
@@ -84,7 +98,15 @@ onBeforeUnmount(() => {
 
 watch(
   () =>
-    [props.modelValue, props.option1Label, props.option2Label, props.option1Disabled] as const,
+    [
+      props.modelValue,
+      props.option1Label,
+      props.option2Label,
+      props.option3Label,
+      props.option1Disabled,
+      props.option3Disabled,
+      hasThreeTabs.value
+    ] as const,
   () => scheduleMeasure(),
   { flush: 'post' }
 )
@@ -122,6 +144,20 @@ const underlineStyle = computed(() => ({
       >
         <span ref="label1Ref" class="tab-switcher__label">{{ option2Label }}</span>
       </button>
+      <button
+        v-if="hasThreeTabs"
+        type="button"
+        class="tab-switcher__tab"
+        :class="{ 'tab-switcher__tab--active': modelValue === 2 }"
+        role="tab"
+        :aria-selected="modelValue === 2"
+        :aria-disabled="option3Disabled"
+        :disabled="option3Disabled"
+        :tabindex="option3Disabled ? -1 : 0"
+        @click="onSelect(2)"
+      >
+        <span ref="label2Ref" class="tab-switcher__label">{{ option3Label }}</span>
+      </button>
     </div>
     <div
       class="tab-switcher__underline"
@@ -144,13 +180,15 @@ const underlineStyle = computed(() => ({
 }
 
 .tab-switcher__tabs {
+  box-sizing: border-box;
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
   align-items: flex-end;
   justify-content: flex-start;
-  gap: 15px;
+  gap: 30px;
   width: 100%;
+  border-bottom: 2px solid var(--color-border-light);
 }
 
 .tab-switcher__tab {
@@ -160,10 +198,10 @@ const underlineStyle = computed(() => ({
   background: transparent;
   cursor: pointer;
   font-family: inherit;
-  font-size: var(--typography-body-xl-font-size);
-  font-weight: var(--typography-body-xl-font-weight-strong);
-  line-height: var(--typography-body-xl-line-height-strong);
-  letter-spacing: var(--typography-body-xl-letter-spacing-strong);
+  font-size: var(--typography-title-3-font-size);
+  font-weight: var(--typography-title-3-font-weight-light);
+  line-height: var(--typography-title-3-line-height);
+  letter-spacing: var(--typography-title-3-letter-spacing);
   color: var(--color-text-secondary);
   white-space: nowrap;
 }
@@ -188,7 +226,7 @@ const underlineStyle = computed(() => ({
 
 .tab-switcher__tab:focus-visible {
   border-radius: 2px;
-  box-shadow: 0 0 0 1px var(--color-focus-ring);
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
 }
 
 .tab-switcher__label {
@@ -202,7 +240,7 @@ const underlineStyle = computed(() => ({
   position: absolute;
   bottom: 0;
   left: 0;
-  height: 1px;
+  height: 2px;
   background-color: var(--color-primary);
   pointer-events: none;
 }

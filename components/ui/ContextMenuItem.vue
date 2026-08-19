@@ -10,8 +10,10 @@ const props = withDefaults(
     /** Visible label when default slot is empty */
     label?: string
     disabled?: boolean
+    /** Optional trailing icon URL (e.g. locked.svg on Auto) */
+    icon?: string
   }>(),
-  { label: 'Item', disabled: false }
+  { label: 'Item', disabled: false, icon: undefined }
 )
 
 const emit = defineEmits<{
@@ -36,6 +38,20 @@ function onClick (e: MouseEvent) {
     <span class="context-menu-item__label">
       <slot>{{ label }}</slot>
     </span>
+    <span
+      v-if="icon || $slots.icon"
+      class="context-menu-item__icon"
+      aria-hidden="true"
+    >
+      <slot name="icon">
+        <img
+          v-if="icon"
+          class="context-menu-item__icon-img"
+          :src="icon"
+          alt=""
+        >
+      </slot>
+    </span>
   </button>
 </template>
 
@@ -45,12 +61,13 @@ function onClick (e: MouseEvent) {
   display: flex;
   flex-direction: row;
   align-items: center;
+  gap: var(--space-2xs);
   width: 100%;
-  min-height: 28px;
+  min-height: var(--size-control-height-md);
   margin: 0;
-  padding: 0 8px;
+  padding: 0 var(--space-md);
   border: none;
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   background: transparent;
   cursor: pointer;
   font-family: var(--font-family-base);
@@ -77,6 +94,25 @@ function onClick (e: MouseEvent) {
 .context-menu-item--disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+.context-menu-item__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  color: inherit;
+}
+
+.context-menu-item__icon-img {
+  display: block;
+  width: 10px;
+  height: 10px;
+  max-width: 10px;
+  max-height: 10px;
+  object-fit: contain;
 }
 
 .context-menu-item__label {

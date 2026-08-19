@@ -11,12 +11,18 @@ const props = withDefaults(
     title?: string
     /** Body lines below the header (Figma: two 12px Medium paragraphs, 10px gap) */
     paragraphs?: string[]
+    /**
+     * Narrow column next to another control (e.g. TagInput row): full width of parent,
+     * no fixed 682px cap, text wraps to avoid horizontal overflow.
+     */
+    compact?: boolean
   }>(),
   {
-    title: 'Conflicting rules',
+    compact: false,
+    title: 'Conditions overlap another template',
     paragraphs: () => [
-      'Under current conditions some jobs are applicable to two templates simultaneously. Please, add more specific rules to make every job fall into a unique category.',
-      '4 jobs are assigned to “New Default Page template” because of the following attribute:'
+      'Your Location conditions overlap another active template’s Location conditions. A job that fits both will only get one page template—the app picks the winner automatically, and it may not be the one you expect.',
+      'Narrow the tags or add another field so each job clearly maps to one template.'
     ]
   }
 )
@@ -29,6 +35,7 @@ const emit = defineEmits<{
 <template>
   <aside
     class="alert-message"
+    :class="{ 'alert-message--compact': compact }"
     role="alert"
     aria-live="polite"
   >
@@ -123,5 +130,17 @@ const emit = defineEmits<{
   line-height: var(--typography-body-line-height);
   letter-spacing: var(--typography-body-letter-spacing);
   color: var(--color-text-tertiary);
+}
+
+.alert-message--compact {
+  max-width: 100%;
+}
+
+.alert-message--compact .alert-message__body {
+  padding-right: 16px;
+}
+
+.alert-message--compact .alert-message__text {
+  overflow-wrap: break-word;
 }
 </style>

@@ -2,10 +2,10 @@
 /**
  * Job template card — Figma: Page Template Card (node 58:6093)
  * Default template: focus-colored border in all states; hover uses same drop shadow as other cards; “Default” label primary.
- * Default-template pills: full ConditionPill styling at 30% opacity (not inactive variant).
+ * Default-template pills: full ConditionPill styling at 30% opacity (not inactive variant); empty conditions show “Any condition”.
  * Non-default: optional assignment status row (Figma 88:537) — dot + Active/Inactive label.
  */
-import { computed, ref, watch, nextTick, onBeforeUnmount } from 'vue'
+import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import ThreeDotMenu from '@/components/ui/ThreeDotMenu.vue'
 import ConditionPill from '@/components/ui/ConditionPill.vue'
 import Status from '@/components/ui/Status.vue'
@@ -25,13 +25,11 @@ const props = withDefaults(
     jobsSummary?: string
     /** When true, shows a “Default” line under the assignment summary */
     isDefault?: boolean
-    /** Condition lines for pills; empty uses `locationLabel` / industry / company string */
+    /** Condition lines for pills; rows with no non-empty values are hidden */
     locationValues?: string[]
     industryValues?: string[]
     companyValues?: string[]
-    locationLabel?: string
-    industryLabel?: string
-    companyLabel?: string
+    titleValues?: string[]
     /** Optional preview image URL */
     thumbnailSrc?: string
     thumbnailAlt?: string
@@ -49,21 +47,22 @@ const props = withDefaults(
      * Used to disable Activate/Deactivate menu options; default templates ignore this.
      */
     templateActive?: boolean
+    /** Globally active assignment attributes; inactive attributes should not be shown as pills. */
+    activeAttributes?: Array<'location' | 'industry' | 'company' | 'title'>
   }>(),
   {
     title: 'Frankfurt Finance Jobs / O&B',
-    jobsSummary: '15 jobs assigned',
+    jobsSummary: '15 jobs',
     isDefault: false,
-    locationLabel: 'Frankfurt + 2',
-    industryLabel: 'Finance',
-    companyLabel: 'Olsen & Breuner',
     thumbnailSrc: '',
     thumbnailAlt: 'Job page template preview',
     interactive: false,
     inactiveConditionPills: false,
     locationValues: () => [],
     industryValues: () => [],
-    companyValues: () => []
+    companyValues: () => [],
+    titleValues: () => [],
+    activeAttributes: () => ['location', 'industry', 'company', 'title']
   }
 )
 
@@ -83,6 +82,17 @@ const contextMenuStyle = ref<Record<string, string>>({})
 const isEditingTitle = ref(false)
 const editedTitle = ref('')
 const titleInputRef = ref<HTMLInputElement | null>(null)
+const mainBlockRef = ref<HTMLElement | null>(null)
+/** Drives thumb frame height to match `.job-template-card__main` (16:9 width derived in CSS). */
+const mainBlockHeightPx = ref(80)
+
+let mainBlockResizeObserver: ResizeObserver | null = null
+
+function syncMainBlockHeight () {
+  const el = mainBlockRef.value
+  if (!el) return
+  mainBlockHeightPx.value = Math.round(el.getBoundingClientRect().height)
+}
 
 const scrollCloseOpts: AddEventListenerOptions = { capture: true, passive: true }
 
@@ -122,7 +132,19 @@ watch(contextMenuOpen, (open) => {
   nextTick(() => contextMenuPanelRef.value?.querySelector('button')?.focus())
 })
 
+onMounted(() => {
+  nextTick(() => {
+    syncMainBlockHeight()
+    const el = mainBlockRef.value
+    if (!el || typeof ResizeObserver === 'undefined') return
+    mainBlockResizeObserver = new ResizeObserver(() => syncMainBlockHeight())
+    mainBlockResizeObserver.observe(el)
+  })
+})
+
 onBeforeUnmount(() => {
+  mainBlockResizeObserver?.disconnect()
+  mainBlockResizeObserver = null
   document.removeEventListener('scroll', onDocumentScrollCloseContextMenu, scrollCloseOpts)
   document.removeEventListener('pointerdown', onDocumentPointerDownContextMenu, true)
   document.removeEventListener('keydown', onDocumentKeydownContextMenu, true)
@@ -217,19 +239,59 @@ function onCardKeydown (e: KeyboardEvent) {
   }
 }
 
-const locationPillValues = computed(() =>
-  props.locationValues.length > 0 ? props.locationValues : [props.locationLabel]
+function nonemptyConditionValues (values: string[] | undefined): string[] {
+  return (values ?? []).filter((v) => String(v).trim().length > 0)
+}
+
+const locationPillValues = computed(() => nonemptyConditionValues(props.locationValues))
+const industryPillValues = computed(() => nonemptyConditionValues(props.industryValues))
+const companyPillValues = computed(() => nonemptyConditionValues(props.companyValues))
+const titlePillValues = computed(() => nonemptyConditionValues(props.titleValues))
+
+const activeAttributeSet = computed(
+  () => new Set(props.activeAttributes ?? [])
 )
-const industryPillValues = computed(() =>
-  props.industryValues.length > 0 ? props.industryValues : [props.industryLabel]
+
+const locationPillVisible = computed(
+  () =>
+    activeAttributeSet.value.has('location') &&
+    locationPillValues.value.length > 0
 )
-const companyPillValues = computed(() =>
-  props.companyValues.length > 0 ? props.companyValues : [props.companyLabel]
+const industryPillVisible = computed(
+  () =>
+    activeAttributeSet.value.has('industry') &&
+    industryPillValues.value.length > 0
+)
+const companyPillVisible = computed(
+  () =>
+    activeAttributeSet.value.has('company') &&
+    companyPillValues.value.length > 0
+)
+const titlePillVisible = computed(
+  () =>
+    activeAttributeSet.value.has('title') &&
+    titlePillValues.value.length > 0
 )
 
 /** Default page template uses active pills + card-level opacity; others use `inactive` when requested */
 const pillInactive = computed(() =>
   props.isDefault ? false : props.inactiveConditionPills
+)
+
+const hasAnyConditionPills = computed(
+  () =>
+    locationPillVisible.value ||
+    industryPillVisible.value ||
+    companyPillVisible.value ||
+    titlePillVisible.value
+)
+
+/** Default homepage template with no filters: show a single “Any condition” pill */
+const showDefaultAnyConditionPill = computed(
+  () =>
+    props.isDefault &&
+    (props.activeAttributes?.length ?? 0) > 0 &&
+    !hasAnyConditionPills.value
 )
 
 const showAssignmentStatus = computed(
@@ -269,6 +331,7 @@ const contextMenuItems = computed(() =>
       'job-template-card--interactive': interactive,
       'job-template-card--default': isDefault
     }"
+    :style="{ '--job-template-thumb-h': `${mainBlockHeightPx}px` }"
     :role="interactive ? 'button' : 'article'"
     :tabindex="interactive ? 0 : undefined"
     :aria-label="interactive ? `Edit job template: ${title}` : undefined"
@@ -293,7 +356,7 @@ const contextMenuItems = computed(() =>
         </div>
       </div>
       <div class="job-template-card__main-column">
-        <div class="job-template-card__main">
+        <div ref="mainBlockRef" class="job-template-card__main">
           <div class="job-template-card__title-row">
             <input
               v-if="isEditingTitle"
@@ -317,7 +380,7 @@ const contextMenuItems = computed(() =>
           <div class="job-template-card__meta">
             <p v-if="isDefault" class="job-template-card__default">Default</p>
             <div
-              v-else-if="showAssignmentStatus"
+              v-if="!isDefault && showAssignmentStatus"
               class="job-template-card__assignment-status"
               role="status"
               :class="assignmentActive
@@ -331,20 +394,31 @@ const contextMenuItems = computed(() =>
                 {{ assignmentActive ? 'Active' : 'Inactive' }}
               </p>
             </div>
+            <span
+              v-if="isDefault || showAssignmentStatus"
+              class="job-template-card__meta-divider"
+              aria-hidden="true"
+            />
             <p class="job-template-card__summary">{{ jobsSummary }}</p>
           </div>
         </div>
       </div>
     </div>
     <div class="job-template-card__pills">
-      <div class="job-template-card__pill-slot">
+      <div v-if="showDefaultAnyConditionPill" class="job-template-card__pill-slot">
+        <ConditionPill variant="template" label="Any condition" :inactive="pillInactive" />
+      </div>
+      <div v-if="locationPillVisible" class="job-template-card__pill-slot">
         <ConditionPill variant="location" :values="locationPillValues" :inactive="pillInactive" />
       </div>
-      <div class="job-template-card__pill-slot">
+      <div v-if="industryPillVisible" class="job-template-card__pill-slot">
         <ConditionPill variant="industry" :values="industryPillValues" :inactive="pillInactive" />
       </div>
-      <div class="job-template-card__pill-slot">
+      <div v-if="companyPillVisible" class="job-template-card__pill-slot">
         <ConditionPill variant="company" :values="companyPillValues" :inactive="pillInactive" />
+      </div>
+      <div v-if="titlePillVisible" class="job-template-card__pill-slot">
+        <ConditionPill variant="title" :values="titlePillValues" :inactive="pillInactive" />
       </div>
     </div>
   </article>
@@ -377,10 +451,11 @@ const contextMenuItems = computed(() =>
   align-items: stretch;
   gap: 12px;
   width: 100%;
+  min-width: 350px;
   padding: 10px;
   border: 1px solid var(--color-border-strong);
   border-radius: 5px;
-  background-color: var(--color-white);
+  background-color: var(--color-background-primary);
   box-shadow: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
@@ -413,19 +488,17 @@ const contextMenuItems = computed(() =>
 .job-template-card__top {
   display: flex;
   flex-direction: row;
-  align-items: stretch;
+  align-items: flex-start;
   justify-content: flex-start;
   gap: 15px;
   width: 100%;
-  /* Match height when “Default” line is shown so non-default cards align in the grid */
-  min-height: 80px;
 }
 
 .job-template-card__main-column {
   display: flex;
   flex-direction: column;
   flex: 1 1 0;
-  align-self: stretch;
+  align-self: flex-start;
   min-width: 0;
   width: 100%;
 }
@@ -433,20 +506,23 @@ const contextMenuItems = computed(() =>
 .job-template-card__thumb-wrap {
   display: flex;
   flex-direction: column;
-  align-self: stretch;
+  align-self: flex-start;
   flex-shrink: 0;
-  width: 104px;
+  box-sizing: border-box;
+  width: auto;
   min-height: 0;
 }
 
 .job-template-card__thumb {
   position: relative;
-  width: 100%;
-  height: 100%;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  height: var(--job-template-thumb-h, 80px);
+  width: auto;
+  aspect-ratio: 16 / 9;
   border: 1px solid var(--color-border-light);
   border-radius: 5px;
   overflow: hidden;
-  box-sizing: border-box;
 }
 
 .job-template-card__thumb-img {
@@ -470,10 +546,12 @@ const contextMenuItems = computed(() =>
 .job-template-card__main {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 6px;
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
   min-height: 0;
+  height: fit-content;
 }
 
 .job-template-card__title-row {
@@ -520,10 +598,18 @@ const contextMenuItems = computed(() =>
 
 .job-template-card__meta {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: flex-start;
-  justify-content: center;
+  flex-direction: row;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.job-template-card__meta-divider {
+  width: 1px;
+  height: 15px;
+  background-color: var(--color-border-strong);
+  flex-shrink: 0;
 }
 
 .job-template-card__summary,
@@ -538,13 +624,21 @@ const contextMenuItems = computed(() =>
 }
 
 .job-template-card__summary {
-  color: var(--color-text-secondary);
+  box-sizing: border-box;
+  padding: 0;
+  color: var(--color-text-tertiary);
   white-space: normal;
   overflow-wrap: anywhere;
 }
 
+.job-template-card__default {
+  box-sizing: border-box;
+  padding: 0;
+  background-color: unset;
+}
+
 .job-template-card--default .job-template-card__default {
-  color: var(--color-primary);
+  color: var(--color-text-tertiary);
 }
 
 .job-template-card__assignment-status {
@@ -553,7 +647,7 @@ const contextMenuItems = computed(() =>
   flex-wrap: nowrap;
   align-items: center;
   gap: 6px;
-  width: 100%;
+  width: auto;
   min-width: 0;
 }
 
@@ -568,27 +662,39 @@ const contextMenuItems = computed(() =>
   color: var(--color-text-tertiary);
 }
 
+.job-template-card__assignment-status--active {
+  box-sizing: border-box;
+  align-self: flex-start;
+  padding: 0;
+  background-color: transparent;
+}
+
 .job-template-card__pills {
   display: flex;
-  flex-direction: column;
-  flex-wrap: nowrap;
+  flex-direction: row;
+  flex-wrap: wrap;
   gap: 6px;
-  align-items: stretch;
+  justify-content: flex-start;
+  align-items: flex-start;
+  align-content: flex-start;
   align-self: stretch;
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .job-template-card__pill-slot {
   box-sizing: border-box;
-  width: 100%;
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 100%;
 }
 
 .job-template-card__pill-slot :deep(.condition-pill) {
-  width: 100%;
   box-sizing: border-box;
+  max-width: 100%;
 }
 
 /* Default template: standard ConditionPill look, 30% opacity (UI Kit) */

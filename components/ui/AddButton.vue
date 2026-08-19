@@ -11,8 +11,10 @@ const props = withDefaults(
     disabled?: boolean
     /** Accessible name (e.g. “Add item”) */
     ariaLabel?: string
+    /** Show hover visuals while pointer is over a parent (e.g. TagInput) */
+    parentHover?: boolean
   }>(),
-  { disabled: false, ariaLabel: 'Add' }
+  { disabled: false, ariaLabel: 'Add', parentHover: false }
 )
 
 const emit = defineEmits<{
@@ -23,7 +25,7 @@ const isHover = ref(false)
 
 const stateClass = computed(() => {
   if (props.disabled) return 'add-button--disabled'
-  if (isHover.value) return 'add-button--hover'
+  if (isHover.value || props.parentHover) return 'add-button--hover'
   return 'add-button--default'
 })
 
@@ -97,6 +99,7 @@ function onClick (e: MouseEvent) {
   border-radius: 50%;
   background-color: transparent;
   pointer-events: none;
+  transition: background-color 0.22s ease;
 }
 
 .add-button--default .add-button__glyph {
@@ -126,5 +129,6 @@ function onClick (e: MouseEvent) {
   display: block;
   width: 12px;
   height: 12px;
+  transition: background-color 0.22s ease;
 }
 </style>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * Ghost button — Figma: GhostButton (node 95:538)
- * Icon + label; 1px border (--color-border-strong); fill from border-light; hover fill from border-strong.
+ * Ghost button — Figma: Ghost Button (node 123:1848)
+ * Pill surface: white + backdrop blur, hairline border, card shadow; icon + label (body XL light).
  */
 import { computed, ref } from 'vue'
 import backArrowIconUrl from '@/icons/back_arrow.svg?url'
@@ -10,8 +10,9 @@ const props = withDefaults(
   defineProps<{
     disabled?: boolean
     type?: 'button' | 'submit' | 'reset'
+    showIcon?: boolean
   }>(),
-  { disabled: false, type: 'button' }
+  { disabled: false, type: 'button', showIcon: true }
 )
 
 const emit = defineEmits<{
@@ -42,7 +43,11 @@ function onClick (e: MouseEvent) {
     @mouseleave="isHover = false"
     @click="onClick"
   >
-    <span class="ghost-button__icon-wrap" aria-hidden="true">
+    <span
+      v-if="showIcon"
+      class="ghost-button__icon-wrap"
+      aria-hidden="true"
+    >
       <slot name="icon">
         <img
           class="ghost-button__icon"
@@ -64,11 +69,11 @@ function onClick (e: MouseEvent) {
   flex-wrap: nowrap;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--space-md);
   box-sizing: border-box;
-  padding: 6px 14px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 5px;
+  padding: var(--space-md) var(--space-3xl);
+  border: var(--border-width-hairline) solid var(--color-border-light);
+  border-radius: var(--radius-xl);
   cursor: pointer;
   font-family: var(--font-family-base);
   font-size: var(--typography-body-xl-font-size);
@@ -76,9 +81,12 @@ function onClick (e: MouseEvent) {
   line-height: var(--typography-body-xl-line-height-light);
   letter-spacing: var(--typography-body-xl-letter-spacing-light);
   color: var(--color-text-primary);
-  background-color: var(--color-border-light);
+  background-color: var(--color-white);
   white-space: nowrap;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.05);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  box-shadow: var(--shadow-card-hover);
+  -webkit-backdrop-filter: blur(var(--blur-backdrop-sm));
+  backdrop-filter: blur(var(--blur-backdrop-sm));
 }
 
 .ghost-button:focus {
@@ -87,12 +95,13 @@ function onClick (e: MouseEvent) {
 
 .ghost-button:focus-visible {
   box-shadow:
-    0 2px 2px rgba(0, 0, 0, 0.05),
+    var(--shadow-card-hover),
     0 0 0 1px var(--color-focus-ring);
 }
 
 .ghost-button--hover {
-  background-color: var(--color-border-strong);
+  background-color: var(--color-background-secondary);
+  border-color: var(--color-border-strong);
 }
 
 .ghost-button:active:not(:disabled) {
@@ -123,5 +132,11 @@ function onClick (e: MouseEvent) {
 .ghost-button__label {
   display: block;
   flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ghost-button {
+    transition-duration: 0.01ms;
+  }
 }
 </style>

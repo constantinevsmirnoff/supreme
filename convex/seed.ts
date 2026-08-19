@@ -1,5 +1,118 @@
+import { internal } from './_generated/api'
 import { mutation } from './_generated/server'
+import type { MutationCtx } from './_generated/server'
 import { v } from 'convex/values'
+import { ASSIGNMENT_SETTINGS_KEY } from './domain/assignmentSettings'
+
+/** Static thumbnails in `public/custom-page-thumbs/` (Vite serves at site root). */
+const CUSTOM_PAGE_PUBLIC_THUMBNAILS: Record<string, string> = {
+  'page-1': '/custom-page-thumbs/page-1.png',
+  'page-2': '/custom-page-thumbs/page-2.png',
+  'page-3': '/custom-page-thumbs/page-3.png',
+  'page-4': '/custom-page-thumbs/page-4.png',
+  'page-5': '/custom-page-thumbs/page-5.png'
+}
+
+function publicThumbnailForCustomPage (externalId: string): string {
+  return CUSTOM_PAGE_PUBLIC_THUMBNAILS[externalId] ?? ''
+}
+
+const CUSTOM_PAGE_SEED_ROWS: Array<{
+  externalId: string
+  title: string
+  isHomepage: boolean
+}> = [
+  { externalId: 'page-1', title: 'Careers Home', isHomepage: true },
+  {
+    externalId: 'page-2',
+    title: 'Life at Olsen & Breuner',
+    isHomepage: false
+  },
+  {
+    externalId: 'page-3',
+    title: 'Early Careers & Internships',
+    isHomepage: false
+  },
+  { externalId: 'page-4', title: 'Meet the Team', isHomepage: false },
+  { externalId: 'page-5', title: 'DEI & Belonging', isHomepage: false },
+  {
+    externalId: 'page-6',
+    title: 'Engineering at Nord Labs',
+    isHomepage: false
+  },
+  {
+    externalId: 'page-7',
+    title: 'Benefits & Wellbeing',
+    isHomepage: false
+  },
+  {
+    externalId: 'page-8',
+    title: 'Our Hiring Process',
+    isHomepage: false
+  },
+  {
+    externalId: 'page-9',
+    title: 'Stories & Perspectives from Our Teams',
+    isHomepage: false
+  },
+  {
+    externalId: 'page-10',
+    title: 'Contact Talent Acquisition',
+    isHomepage: false
+  }
+]
+
+async function ensureCustomPagesSeeded (ctx: MutationCtx): Promise<void> {
+  const existing = await ctx.db.query('customPages').take(1)
+  if (existing.length > 0) return
+  for (const row of CUSTOM_PAGE_SEED_ROWS) {
+    await ctx.db.insert('customPages', {
+      externalId: row.externalId,
+      title: row.title,
+      thumbnail: publicThumbnailForCustomPage(row.externalId),
+      isHomepage: row.isHomepage,
+      parentFolderExternalId: null
+    })
+  }
+}
+
+/** Keep first five pages aligned with shipped assets (idempotent for existing DBs). */
+/** Backfill `parentFolderExternalId: null` for docs created before folder support. */
+async function syncCustomPagesParentFolderRoot (ctx: MutationCtx): Promise<void> {
+  const all = await ctx.db.query('customPages').collect()
+  for (const d of all) {
+    if (d.parentFolderExternalId === undefined) {
+      await ctx.db.patch(d._id, { parentFolderExternalId: null })
+    }
+  }
+}
+
+async function syncFirstFiveCustomPageThumbnails (
+  ctx: MutationCtx
+): Promise<void> {
+  for (const externalId of Object.keys(CUSTOM_PAGE_PUBLIC_THUMBNAILS)) {
+    const thumbnail = CUSTOM_PAGE_PUBLIC_THUMBNAILS[externalId]
+    const doc = await ctx.db
+      .query('customPages')
+      .withIndex('by_externalId', (q) => q.eq('externalId', externalId))
+      .unique()
+    if (doc == null) continue
+    if (doc.thumbnail === thumbnail) continue
+    await ctx.db.patch(doc._id, { thumbnail })
+  }
+}
+
+async function ensureAssignmentSettingsSeeded (ctx: MutationCtx): Promise<void> {
+  const doc = await ctx.db
+    .query('assignmentSettings')
+    .withIndex('by_key', (q) => q.eq('key', ASSIGNMENT_SETTINGS_KEY))
+    .unique()
+  if (doc != null) return
+  await ctx.db.insert('assignmentSettings', {
+    key: ASSIGNMENT_SETTINGS_KEY,
+    activeAttributes: []
+  })
+}
 
 const LOCATIONS = ['Berlin', 'Hamburg', 'München', 'Köln']
 const INDUSTRIES = [
@@ -61,6 +174,10 @@ export const seedIfEmpty = mutation({
   handler: async (ctx) => {
     const existingJobs = await ctx.db.query('jobs').take(1)
     if (existingJobs.length > 0) {
+      await ensureCustomPagesSeeded(ctx)
+      await syncCustomPagesParentFolderRoot(ctx)
+      await syncFirstFiveCustomPageThumbnails(ctx)
+      await ensureAssignmentSettingsSeeded(ctx)
       return { seeded: false }
     }
 
@@ -89,6 +206,13 @@ export const seedIfEmpty = mutation({
       conditionsEditedAt: 0,
       templateActive: true
     })
+
+    await ensureCustomPagesSeeded(ctx)
+    await syncCustomPagesParentFolderRoot(ctx)
+    await syncFirstFiveCustomPageThumbnails(ctx)
+    await ensureAssignmentSettingsSeeded(ctx)
+
+    await ctx.scheduler.runAfter(0, internal.embeddings.backfillEmbeddingsStep, {})
 
     return { seeded: true }
   }

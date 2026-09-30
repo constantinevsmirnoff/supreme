@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "description": "Settled default cube field used for the cover. Pointer is off the canvas, so every cube is at its rest height.",
+  "values": {
+    "export.includeBackground": true,
+    "appearance.background": "#F3F0EA",
+    "canvas.workspaceBackground": "dots",
+    "canvas.aspectRatio": {
+      "height": 9,
+      "mode": "preset",
+      "value": "16:9",
+      "width": 16
+    },
+    "canvas.size.width": 1280,
+    "canvas.size.height": 720,
+    "canvas.renderScale": 2,
+    "canvas.rotationLocked": false,
+    "view.orbit": {
+      "position": [
+        1.05,
+        1.22,
+        1.18
+      ],
+      "up": [
+        0,
+        1,
+        0
+      ]
+    },
+    "field.columns": 24,
+    "field.gap": 0.12,
+    "field.bevel": 0.04,
+    "field.floor": 0.2,
+    "field.relief": 0.82,
+    "palette.pattern": "patches",
+    "palette.hue": [
+      12,
+      340
+    ],
+    "palette.saturation": [
+      38,
+      72
+    ],
+    "palette.lightness": [
+      62,
+      84
+    ],
+    "palette.patch": 4.8,
+    "palette.seed": 47,
+    "push.falloff": "soft",
+    "push.radius": 140,
+    "push.depth": 0.55,
+    "push.stiffness": 220,
+    "push.damping": 8,
+    "push.mass": 1,
+    "push.lag": 40,
+    "light.azimuth": 38,
+    "light.elevation": 64,
+    "light.shade": 0.82,
+    "light.ambient": 0.7,
+    "light.sheen": 0.16,
+    "light.haze": 0.22,
+    "export.image.format": "png",
+    "export.image.resolution": "4k"
+  }
+}

@@ -76,7 +76,7 @@ test("browser: format changes the export", async ({ page }) => {
   const session = await openFloor(page);
   await chooseOption(page, "export.image.resolution", "2K");
   await expectToolcraftExportedArtifact(
-    session.targetAction("actions.output", async (currentPage) => exportPng(currentPage)),
+    session.targetAction("export.image.format", async (currentPage) => exportPng(currentPage)),
     async (download) => (await inspectToolcraftImageDownload({ backgroundRgba, download, page })).inspection,
     { requirementId: "export.image.format" },
   );
@@ -90,7 +90,7 @@ test("browser: resolution changes the export", async ({ page }) => {
   const session = await openFloor(page);
   await chooseOption(page, "export.image.resolution", "2K");
   await expectToolcraftExportedArtifact(
-    session.targetAction("actions.output", async (currentPage) => exportPng(currentPage)),
+    session.targetAction("export.image.resolution", async (currentPage) => exportPng(currentPage)),
     async (download) => {
       const inspected = await inspectToolcraftImageDownload({ backgroundRgba, download, page });
       expect(inspected.inspection.width).toBe(2048);

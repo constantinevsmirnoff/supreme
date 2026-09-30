@@ -74,13 +74,16 @@ export default defineConfig(async () => ({
     tailwindcss(),
     react(),
   ],
-  server: testDependencyRoot
-    ? {
-        fs: {
-          allow: [rootDir, path.resolve(testDependencyRoot)],
-        },
-      }
-    : undefined,
+  server: {
+    allowedHosts: true,
+    ...(testDependencyRoot
+      ? {
+          fs: {
+            allow: [rootDir, path.resolve(testDependencyRoot)],
+          },
+        }
+      : {}),
+  },
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

@@ -93,7 +93,7 @@ const child = spawn(
   [
     viteCommand,
     "--host",
-    "127.0.0.1",
+    "0.0.0.0",
     "--port",
     String(port),
     "--strictPort",
